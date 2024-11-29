@@ -1,7 +1,7 @@
 package pt.unl.fct.dstp;
 
 import pt.unl.fct.common.CryptoHandler;
-import pt.unl.fct.common.CommonUtils;
+import pt.unl.fct.common.Utils;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.BadPaddingException;
@@ -49,7 +49,7 @@ class SecureSocketBase {
         byte[] sequenceNumberBytes = new byte[]{(byte) timestamp, (byte) sequenceNumber};
 
 
-        byte[] data = CommonUtils.subArray(packet.getData(), packet.getOffset(), packet.getLength());
+        byte[] data = Utils.subArray(packet.getData(), packet.getOffset(), packet.getLength());
         byte[] integrityProof = cryptoHandler.createIntegrityProof(data, sequenceNumberBytes);
         sequenceNumber++;
 
@@ -63,12 +63,12 @@ class SecureSocketBase {
 
         if (cryptoHandler.isUsingHMac()) {
             // Payload: Encrypted(sequence number + data) + integrity proof
-            payload = CommonUtils.concat(cryptoHandler.encrypt(CommonUtils.concat(
+            payload = Utils.concat(cryptoHandler.encrypt(Utils.concat(
                     sequenceNumberBytes,
                     data)), integrityProof);
         } else {
             // Payload: Encrypted(sequence number + data + integrity proof)
-            payload = cryptoHandler.encrypt(CommonUtils.concat(
+            payload = cryptoHandler.encrypt(Utils.concat(
                     sequenceNumberBytes,
                     data,
                     integrityProof));
@@ -78,7 +78,7 @@ class SecureSocketBase {
         header[3] = (byte) (payload.length >> 8);
         header[4] = (byte) payload.length;
 
-        byte[] dstpPacket = CommonUtils.concat(header, payload);
+        byte[] dstpPacket = Utils.concat(header, payload);
         packet.setData(dstpPacket);
     }
 
@@ -92,7 +92,7 @@ class SecureSocketBase {
     protected boolean processReceivedPacket(DatagramPacket packet) {
         byte[] data = packet.getData();
         int payloadLength = ((data[3] & 0xFF) << 8) | (data[4] & 0xFF);
-        byte[] payload = CommonUtils.subArray(data, header.length, header.length + payloadLength);
+        byte[] payload = Utils.subArray(data, header.length, header.length + payloadLength);
 
         byte[] decryptedData;
         byte[] receivedMessage;
@@ -103,14 +103,14 @@ class SecureSocketBase {
         try {
             if (cryptoHandler.isUsingHMac()) {
                 // Payload: Encrypted(sequence number + data) + integrity proof
-                decryptedData = cryptoHandler.decrypt(CommonUtils.subArray(payload, 0, payload.length - cryptoHandler.getIntegrityProofLength()));
-                receivedMessage = CommonUtils.subArray(decryptedData, 2, decryptedData.length);
-                integrityProof = CommonUtils.subArray(payload, payload.length - cryptoHandler.getIntegrityProofLength(), payload.length);
+                decryptedData = cryptoHandler.decrypt(Utils.subArray(payload, 0, payload.length - cryptoHandler.getIntegrityProofLength()));
+                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length);
+                integrityProof = Utils.subArray(payload, payload.length - cryptoHandler.getIntegrityProofLength(), payload.length);
             } else {
                 // Payload: Encrypted(sequence number + data + integrity proof)
                 decryptedData = cryptoHandler.decrypt(payload);
-                receivedMessage = CommonUtils.subArray(decryptedData, 2, decryptedData.length - cryptoHandler.getIntegrityProofLength());
-                integrityProof = CommonUtils.subArray(decryptedData, decryptedData.length - cryptoHandler.getIntegrityProofLength(), decryptedData.length);
+                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length - cryptoHandler.getIntegrityProofLength());
+                integrityProof = Utils.subArray(decryptedData, decryptedData.length - cryptoHandler.getIntegrityProofLength(), decryptedData.length);
             }
 
         }
@@ -135,7 +135,7 @@ class SecureSocketBase {
 
 
         // Extract sequence number from decrypted data
-        byte[] sequenceNumBytes = CommonUtils.subArray(decryptedData, 0, 2);
+        byte[] sequenceNumBytes = Utils.subArray(decryptedData, 0, 2);
         int sequenceNum = ((sequenceNumBytes[0] & 0xFF) << 8) | (sequenceNumBytes[1] & 0xFF);
 
         // Do not process packets with duplicate sequence numbers

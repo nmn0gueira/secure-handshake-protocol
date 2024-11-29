@@ -128,14 +128,14 @@ public class CryptoHandler {
                     }
                 }
                 case SYMMETRIC_KEY ->   // Cipher must be initialized first
-                        this.key = new SecretKeySpec(CommonUtils.hexStringToByteArray(value), getAlgorithm());
+                        this.key = new SecretKeySpec(Utils.hexStringToByteArray(value), getAlgorithm());
                 case SYMMETRIC_KEY_SIZE -> {
                     int keyLengthBits = this.key.getEncoded().length * 8;
                     if (keyLengthBits != Integer.parseInt(value))
                         throw new IllegalArgumentException("Symmetric key length mismatch: Specified:" + keyLengthBits + ", Expected:" + value);
 
                 }
-                case IV -> staticIvSpec = new IvParameterSpec(CommonUtils.hexStringToByteArray(value));
+                case IV -> staticIvSpec = new IvParameterSpec(Utils.hexStringToByteArray(value));
                 case IV_SIZE -> {
                     if (staticIvSpec == null)
                         throw new IllegalStateException("IV not initialized");
@@ -212,13 +212,13 @@ public class CryptoHandler {
     private SecretKey getMacKey(String value) {
         switch (macMode) {
             case HMAC -> {
-                return new SecretKeySpec(CommonUtils.hexStringToByteArray(value), mac.getAlgorithm());
+                return new SecretKeySpec(Utils.hexStringToByteArray(value), mac.getAlgorithm());
             }
             case AESGMAC -> {
-                return new SecretKeySpec(CommonUtils.hexStringToByteArray(value), "AES");
+                return new SecretKeySpec(Utils.hexStringToByteArray(value), "AES");
             }
             case RC6GMAC -> {
-                return new SecretKeySpec(CommonUtils.hexStringToByteArray(value), "RC6");
+                return new SecretKeySpec(Utils.hexStringToByteArray(value), "RC6");
             }
             default -> {
                 throw new IllegalStateException("Invalid MAC mode");
@@ -331,7 +331,7 @@ public class CryptoHandler {
                 }
                 byte[] decryptedData = cipher.doFinal(encryptedData);
                 int padding = decryptedData[decryptedData.length - 1];
-                return CommonUtils.subArray(decryptedData, 0, decryptedData.length - padding);
+                return Utils.subArray(decryptedData, 0, decryptedData.length - padding);
             }
 
             case NO_AEAD -> {
@@ -360,7 +360,7 @@ public class CryptoHandler {
                         return mac.doFinal(data);
                     }
                     case AESGMAC, RC6GMAC, AESGMACFAST, RC6GMACFAST -> {
-                        mac.init(hMacKey, new IvParameterSpec(CommonUtils.toXBytes(nonce, 12)));
+                        mac.init(hMacKey, new IvParameterSpec(Utils.toXBytes(nonce, 12)));
                         return mac.doFinal(data);
                     }
                     default -> {

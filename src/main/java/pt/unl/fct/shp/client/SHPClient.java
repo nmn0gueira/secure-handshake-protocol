@@ -1,26 +1,25 @@
 package pt.unl.fct.shp.client;
 
-import pt.unl.fct.common.CommonUtils;
-import pt.unl.fct.shp.common.SHProtocol;
+import pt.unl.fct.common.Utils;
+import pt.unl.fct.shp.AbstractSHPPeer;
+
 
 import java.io.*;
 import java.net.Socket;
 
-public class SHPClient {
+public class SHPClient extends AbstractSHPPeer {
 
     private Socket socket;
-    private OutputStream output;
-    private InputStream input;
 
 
-    public SHPClient() throws IOException {
+    public SHPClient(String request) throws IOException {
         this.socket = new Socket("localhost", 8080);
         this.output = socket.getOutputStream();
         this.input = socket.getInputStream();
 
-        startHandshake();
+        init();
 
-        long timeout = System.currentTimeMillis() + SHProtocol.TIMEOUT_MS;
+        long timeout = System.currentTimeMillis() + TIMEOUT_MS;
 
         while (!socket.isClosed() && System.currentTimeMillis() < timeout) {
 
@@ -29,11 +28,11 @@ public class SHPClient {
                 byte[] response = new byte[1024];
                 int bytesRead = input.read(response);
 
-                byte[] actualData = CommonUtils.subArray(response, 0, bytesRead);
-                byte[][] message = SHProtocol.extractHeaderAndPayload(actualData);
-                SHProtocol.MsgType msgType = SHProtocol.getMessageType(message[0]);
+                byte[] actualData = Utils.subArray(response, 0, bytesRead);
+                byte[][] message = extractHeaderAndPayload(actualData);
+                MsgType msgType = getMessageType(message[0]);
 
-                handleServerMessage(msgType, message[1]);
+                handleMessage(msgType, message[1]);
 
                 Thread.sleep(1000);
 
@@ -46,28 +45,33 @@ public class SHPClient {
         }
     }
 
-    private void handleServerMessage(SHProtocol.MsgType msgType, byte[] bytes) throws IOException {
+    @Override
+    protected void init() {
+        byte[] header = getMessageHeader(MsgType.TYPE_1);
+        byte[] userId = new byte[]{0x01, 0x02, 0x03, 0x04};
+        byte[] message = Utils.concat(header, userId);
+        try {
+            output.write(message);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    protected void handleMessage(MsgType msgType, byte[] bytes) {
         switch (msgType) {
             case TYPE_2 -> {}
             case TYPE_4 -> {
-                socket.close();
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
             }
             default -> {
                 throw new IllegalStateException("Unexpected message type: " + msgType); // Should not happen
             }
         }
     }
-
-    /**
-     * Starts handshake with the server. This means sending the userId to the server
-     * @throws IOException
-     */
-    private void startHandshake() throws IOException {
-        byte[] header = SHProtocol.getMessageHeader(SHProtocol.MsgType.TYPE_1);
-        byte[] userId = new byte[]{0x01, 0x02, 0x03, 0x04};
-        byte[] message = CommonUtils.concat(header, userId);
-        output.write(message);
-    }
-
-
 }

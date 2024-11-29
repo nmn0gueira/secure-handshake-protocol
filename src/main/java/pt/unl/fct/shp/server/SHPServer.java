@@ -1,10 +1,12 @@
 package pt.unl.fct.shp.server;
 
+import pt.unl.fct.shp.AbstractSHPPeer;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-public class SHPServer {
+public class SHPServer extends AbstractSHPPeer {
     int port;
 
     public SHPServer(int port){
@@ -54,7 +56,13 @@ public class SHPServer {
     }
 
 
+    @Override
+    protected void init() {
 
+    }
 
+    @Override
+    protected void handleMessage(MsgType msgType, byte[] bytes) {
 
+    }
 }

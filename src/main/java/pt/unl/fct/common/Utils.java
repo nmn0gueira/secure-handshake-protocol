@@ -1,15 +1,9 @@
 package pt.unl.fct.common;
 
 /**
- * Material/Labs para SRSC 20/21, Sem-1
- * hj
- **/
-
-/**
- * Auxiliar
- * Some conversion functions
+ * Common utility functions
  */
-public class CommonUtils
+public class Utils
 {
     private static final String digits = "0123456789abcdef";
 
@@ -106,7 +100,7 @@ public class CommonUtils
     public static String getHexRepresentation(byte[] data) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < data.length; i++) {
-            sb.append(CommonUtils.toHex(new byte[]{data[i]}));
+            sb.append(Utils.toHex(new byte[]{data[i]}));
             if (i != data.length - 1) {
                 sb.append(" ");
             }
