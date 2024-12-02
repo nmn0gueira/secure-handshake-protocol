@@ -18,6 +18,7 @@ public abstract class AbstractSHPPeer {
 
     protected OutputStream output;
     protected InputStream input;
+    protected static final int PORT = 7777;
     protected static final int TIMEOUT_MS = 10000;
     private static final short SHP_VERSION = 0x01;
     private static final byte SHP_RELEASE = 0x01;
@@ -57,7 +58,10 @@ public abstract class AbstractSHPPeer {
         return MsgType.values()[header[1]];
     }
 
-    protected abstract void init();
 
     protected abstract void handleMessage(MsgType msgType, byte[] bytes);
+
+    protected abstract void runProtocol();
+
+    protected abstract void loadResources();
 }

@@ -1,6 +1,7 @@
-package pt.unl.fct.common;
+package pt.unl.fct.dstp;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import pt.unl.fct.common.Utils;
 
 import javax.crypto.Cipher;
 import javax.crypto.Mac;

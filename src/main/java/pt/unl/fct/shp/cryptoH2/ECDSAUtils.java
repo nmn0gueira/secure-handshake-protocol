@@ -2,7 +2,12 @@ package pt.unl.fct.shp.cryptoH2;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import java.security.*;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
+
 public class ECDSAUtils {
 
     static {
@@ -51,5 +56,19 @@ public class ECDSAUtils {
         verifier.initVerify(publicKey);
         verifier.update(message);
         return verifier.verify(signature);
+    }
+
+    // Method to load private key from byte array (DER encoded)
+    public static ECPrivateKey loadPrivateKey(byte[] privateKeyBytes) throws Exception {
+        KeyFactory keyFactory = KeyFactory.getInstance("ECDSA", "BC");
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+        return (ECPrivateKey) keyFactory.generatePrivate(keySpec);
+    }
+
+    // Method to load public key from byte array (DER encoded)
+    public static ECPublicKey loadPublicKey(byte[] publicKeyBytes) throws Exception {
+        KeyFactory keyFactory = KeyFactory.getInstance("ECDSA", "BC");
+        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
+        return (ECPublicKey) keyFactory.generatePublic(keySpec);
     }
 }

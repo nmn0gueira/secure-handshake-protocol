@@ -1,6 +1,5 @@
 package pt.unl.fct.dstp;
 
-import pt.unl.fct.common.CryptoHandler;
 import pt.unl.fct.common.Utils;
 
 import javax.crypto.AEADBadTagException;
