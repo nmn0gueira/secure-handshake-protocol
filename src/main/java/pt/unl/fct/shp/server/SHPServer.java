@@ -2,30 +2,24 @@ package pt.unl.fct.shp.server;
 
 import pt.unl.fct.common.Utils;
 import pt.unl.fct.shp.AbstractSHPPeer;
-import pt.unl.fct.shp.cryptoH2.ECDSAUtils;
+import pt.unl.fct.crypto.CryptoUtils;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.*;
-import java.security.spec.ECGenParameterSpec;
-import java.security.spec.ECParameterSpec;
-import java.security.spec.ECPublicKeySpec;
-import java.security.spec.EllipticCurve;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class SHPServer extends AbstractSHPPeer {
 
-    private static final SecureRandom SECURE_RANDOM =  new SecureRandom();
     private static final Logger LOGGER = Logger.getLogger(SHPServer.class.getName());
-    private final Map<String, Map.Entry<byte[], byte[]>> userDatabase;
+    private final Map<String, User> userDatabase;
     private final ServerSocket serverSocket;
     private Socket clientSocket;
-    KeyStore keyStore;
+    KeyPair keyPair;
 
     public SHPServer() throws IOException {
         userDatabase = new HashMap<>();
@@ -38,46 +32,26 @@ public class SHPServer extends AbstractSHPPeer {
     @Override
     protected void loadResources() {
         try {
-            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-            InputStream inputStream = classLoader.getResourceAsStream("server/ServerECCKeyPair.sec");
-            PrivateKey privateKey = null;
-            PublicKey publicKey = null;
-            // Read the file content
-            assert inputStream != null;
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] parts = line.split(":");
-                    if (parts[0].equals("PublicKey")) {
-                        publicKey = ECDSAUtils.loadPublicKey(Utils.hexStringToByteArray(parts[1]));
-                    } else
-                    if (parts[0].equals("PrivateKey")) {
-                        privateKey = ECDSAUtils.loadPrivateKey(Utils.hexStringToByteArray(parts[1]));
-                    }
-                }
-
-            keyStore = KeyStore.getInstance("PKCS12");
-            keyStore.load(null, null);
-            keyStore.setKeyEntry("serverPrivate", privateKey, null, null);
-            keyStore.setKeyEntry("serverPublic", publicKey, null, null);
-
-            inputStream = classLoader.getResourceAsStream("server/userdatabase.txt");
-            assert inputStream != null;
-            reader = new BufferedReader(new InputStreamReader(inputStream));
-            while ((line = reader.readLine()) != null) {
-                String[] parts = line.split(" ");
-                byte[] passwordHash = Utils.hexStringToByteArray(parts[1]);
-                byte[] salt = Utils.hexStringToByteArray(parts[2]);
-                byte[] publicKeyBytes = Utils.hexStringToByteArray(parts[3]);
-                userDatabase.put(parts[0], Map.entry(passwordHash, salt));
-
-                keyStore.setKeyEntry(parts[0], ECDSAUtils.loadPublicKey(publicKeyBytes), null, null);
-
-            }
-
-
+            keyPair = CryptoUtils.loadKeyPairFromFile("server/ServerECCKeyPair.sec");
+            loadUserDatabase();
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to load server resources.", e);
+        }
+    }
+
+    private void loadUserDatabase() throws IOException, GeneralSecurityException {
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        InputStream inputStream = classLoader.getResourceAsStream("server/userdatabase.txt");
+        assert inputStream != null;
+        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String[] parts = line.split(":");
+            String userId = parts[0].trim();
+            byte[] passwordHash = Utils.hexStringToByteArray(parts[1].trim());
+            byte[] salt = Utils.hexStringToByteArray(parts[2].trim());
+            byte[] publicKeyBytes = Utils.hexStringToByteArray(parts[3].trim());
+            userDatabase.put(parts[0], new User(parts[0], passwordHash, salt, CryptoUtils.loadPublicKey(publicKeyBytes)));
         }
     }
 
@@ -129,7 +103,7 @@ public class SHPServer extends AbstractSHPPeer {
 
         handleMessage(msgType, message[1]);
 
-        return true;
+        return msgType != MsgType.TYPE_5;   // Return false if the server should finish
     }
 
     private void acceptClientConnection() throws IOException {
@@ -146,7 +120,7 @@ public class SHPServer extends AbstractSHPPeer {
             case TYPE_3 -> handleType3Message(bytes);
             default -> {
                 LOGGER.severe(() -> "Unexpected message type: " + msgType);
-                throw new IllegalStateException();
+                throw new IllegalStateException("Unexpected message type: " + msgType);
             }
         }
     }
@@ -154,12 +128,18 @@ public class SHPServer extends AbstractSHPPeer {
     private void handleType1Message(byte[] bytes) {
         LOGGER.info("Received message type 1.");
 
+        String userId = new String(bytes);
+        if (!userDatabase.containsKey(userId)) {
+            LOGGER.warning("User not found.");
+            return;
+        }
+
         byte[] salt = new byte[8];
-        SECURE_RANDOM.nextBytes(salt);
+        CryptoUtils.SECURE_RANDOM.nextBytes(salt);
         byte[] iterationBytes = new byte[4];
-        SECURE_RANDOM.nextBytes(iterationBytes);
+        CryptoUtils.SECURE_RANDOM.nextBytes(iterationBytes);
         byte[] nonce = new byte[16];
-        SECURE_RANDOM.nextBytes(nonce);
+        CryptoUtils.SECURE_RANDOM.nextBytes(nonce);
 
         byte[] header = getMessageHeader(MsgType.TYPE_2);
         byte[] message = Utils.concat(header, salt, iterationBytes, nonce);

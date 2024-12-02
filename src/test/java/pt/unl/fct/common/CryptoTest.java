@@ -1,7 +1,7 @@
 package pt.unl.fct.common;
 
 import org.junit.Test;
-import pt.unl.fct.dstp.CryptoHandler;
+import pt.unl.fct.crypto.CryptoHandler;
 
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;

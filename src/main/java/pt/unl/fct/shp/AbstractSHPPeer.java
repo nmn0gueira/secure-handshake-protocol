@@ -54,6 +54,28 @@ public abstract class AbstractSHPPeer {
         return new byte[][]{header, payload};
     }
 
+    // Refactored method to handle reading and processing messages
+    protected boolean processMessage() throws IOException {
+        byte[] response = new byte[1024];
+        int bytesRead = input.read(response);
+
+        if (bytesRead == -1) {
+            LOGGER.info("Connection closed.");
+            return false;
+        }
+        if (bytesRead == 0) {
+            return true;  // Connection alive, continue listening for messages
+        }
+
+        byte[] actualData = Utils.subArray(response, 0, bytesRead);
+        byte[][] message = extractHeaderAndPayload(actualData);
+        MsgType msgType = getMessageType(message[0]);
+
+        handleMessage(msgType, message[1]);
+
+        return msgType != MsgType.TYPE_5; // If TYPE_5 is received, server finishes
+    }
+
     protected MsgType getMessageType(byte[] header) {
         return MsgType.values()[header[1]];
     }

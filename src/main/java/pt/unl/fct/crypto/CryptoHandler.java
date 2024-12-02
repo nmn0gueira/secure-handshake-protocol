@@ -1,4 +1,4 @@
-package pt.unl.fct.dstp;
+package pt.unl.fct.crypto;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import pt.unl.fct.common.Utils;
