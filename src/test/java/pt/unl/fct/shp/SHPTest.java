@@ -1,8 +1,8 @@
 package pt.unl.fct.shp;
 
 import org.junit.Test;
-import pt.unl.fct.shp.client.SHPClient;
-import pt.unl.fct.shp.server.SHPServer;
+import pt.unl.fct.shp.client.ShpClient;
+import pt.unl.fct.shp.server.ShpServer;
 
 import java.io.IOException;
 
@@ -12,12 +12,12 @@ public class SHPTest {
     public void SHP() throws IOException, InterruptedException {
         new Thread(() -> {
             try {
-                new SHPServer();
+                new ShpServer();
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }).start();
         Thread.sleep(1000);
-        new SHPClient("request");
+        new ShpClient("request");
     }
 }

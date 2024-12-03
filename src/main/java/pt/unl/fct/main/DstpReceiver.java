@@ -4,7 +4,7 @@ import pt.unl.fct.dstp.SecureDatagramSocket;
 
 import java.net.DatagramPacket;
 
-public class DSTPReceiver {
+public class DstpReceiver {
     public static void main(String[] args) throws Exception {
         SecureDatagramSocket socket = new SecureDatagramSocket(12345, "cryptoconfig.txt");
         System.out.println("Listening on port " + socket.getLocalPort());

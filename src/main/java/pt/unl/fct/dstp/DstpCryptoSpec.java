@@ -1,4 +1,4 @@
-package pt.unl.fct.crypto;
+package pt.unl.fct.dstp;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import pt.unl.fct.common.Utils;
@@ -74,7 +74,7 @@ enum MacMode {
     }
 }
 
-public class CryptoHandler {
+public class DstpCryptoSpec {
 
     // Configuration
     private Cipher cipher;
@@ -88,7 +88,7 @@ public class CryptoHandler {
     private boolean usesMac;
 
 
-    public CryptoHandler(String cryptoConfigFile) {
+    public DstpCryptoSpec(String cryptoConfigFile) {
         Security.addProvider(new BouncyCastleProvider());
         loadCryptoConfig(cryptoConfigFile);
     }

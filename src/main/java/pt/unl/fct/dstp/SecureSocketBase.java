@@ -1,7 +1,6 @@
 package pt.unl.fct.dstp;
 
 import pt.unl.fct.common.Utils;
-import pt.unl.fct.crypto.CryptoHandler;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.BadPaddingException;
@@ -15,7 +14,7 @@ class SecureSocketBase {
     protected static final int UDP_MAX_SIZE = 65507;
     private static final short DSTP_VERSION = 0x0002;
     private static final byte DSTP_RELEASE = 0x01;
-    private final CryptoHandler cryptoHandler;
+    private final DstpCryptoSpec dstpCryptoSpec;
     private long timestamp;
     private int sequenceNumber;
     private final Set<Integer> receivedSequenceNumbers;
@@ -31,7 +30,7 @@ class SecureSocketBase {
     };
 
     protected SecureSocketBase(String cryptoConfigFile) {
-        cryptoHandler = new CryptoHandler(cryptoConfigFile);
+        dstpCryptoSpec = new DstpCryptoSpec(cryptoConfigFile);
         // Sequence number will be the first 4
         timestamp = System.currentTimeMillis();
         receivedSequenceNumbers = new HashSet<>();
@@ -50,7 +49,7 @@ class SecureSocketBase {
 
 
         byte[] data = Utils.subArray(packet.getData(), packet.getOffset(), packet.getLength());
-        byte[] integrityProof = cryptoHandler.createIntegrityProof(data, sequenceNumberBytes);
+        byte[] integrityProof = dstpCryptoSpec.createIntegrityProof(data, sequenceNumberBytes);
         sequenceNumber++;
 
         // Reset sequence number and increment timestamp
@@ -61,14 +60,14 @@ class SecureSocketBase {
 
         byte[] payload;
 
-        if (cryptoHandler.isUsingHMac()) {
+        if (dstpCryptoSpec.isUsingHMac()) {
             // Payload: Encrypted(sequence number + data) + integrity proof
-            payload = Utils.concat(cryptoHandler.encrypt(Utils.concat(
+            payload = Utils.concat(dstpCryptoSpec.encrypt(Utils.concat(
                     sequenceNumberBytes,
                     data)), integrityProof);
         } else {
             // Payload: Encrypted(sequence number + data + integrity proof)
-            payload = cryptoHandler.encrypt(Utils.concat(
+            payload = dstpCryptoSpec.encrypt(Utils.concat(
                     sequenceNumberBytes,
                     data,
                     integrityProof));
@@ -101,16 +100,16 @@ class SecureSocketBase {
 
         // If the packet cannot be decrypted, return false (this may happen with tampered packets when using padding)
         try {
-            if (cryptoHandler.isUsingHMac()) {
+            if (dstpCryptoSpec.isUsingHMac()) {
                 // Payload: Encrypted(sequence number + data) + integrity proof
-                decryptedData = cryptoHandler.decrypt(Utils.subArray(payload, 0, payload.length - cryptoHandler.getIntegrityProofLength()));
+                decryptedData = dstpCryptoSpec.decrypt(Utils.subArray(payload, 0, payload.length - dstpCryptoSpec.getIntegrityProofLength()));
                 receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length);
-                integrityProof = Utils.subArray(payload, payload.length - cryptoHandler.getIntegrityProofLength(), payload.length);
+                integrityProof = Utils.subArray(payload, payload.length - dstpCryptoSpec.getIntegrityProofLength(), payload.length);
             } else {
                 // Payload: Encrypted(sequence number + data + integrity proof)
-                decryptedData = cryptoHandler.decrypt(payload);
-                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length - cryptoHandler.getIntegrityProofLength());
-                integrityProof = Utils.subArray(decryptedData, decryptedData.length - cryptoHandler.getIntegrityProofLength(), decryptedData.length);
+                decryptedData = dstpCryptoSpec.decrypt(payload);
+                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length - dstpCryptoSpec.getIntegrityProofLength());
+                integrityProof = Utils.subArray(decryptedData, decryptedData.length - dstpCryptoSpec.getIntegrityProofLength(), decryptedData.length);
             }
 
         }
@@ -148,7 +147,7 @@ class SecureSocketBase {
         }
 
         //  Do not process packets that were tampered with
-        if (!cryptoHandler.verifyIntegrity(receivedMessage, sequenceNumBytes, integrityProof)) {
+        if (!dstpCryptoSpec.verifyIntegrity(receivedMessage, sequenceNumBytes, integrityProof)) {
             if (VERBOSE) {
                 System.err.println("Received packet with invalid integrity proof");
             }

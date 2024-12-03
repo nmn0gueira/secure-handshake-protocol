@@ -5,7 +5,7 @@ import pt.unl.fct.dstp.SecureDatagramSocket;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 
-public class DSTPSender {
+public class DstpSender {
     public static void main(String[] args) throws Exception {
         InetAddress address = InetAddress.getByName("localhost");
         SecureDatagramSocket socket = new SecureDatagramSocket("cryptoconfig.txt");

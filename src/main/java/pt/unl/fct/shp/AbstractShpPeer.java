@@ -2,10 +2,17 @@ package pt.unl.fct.shp;
 
 import pt.unl.fct.common.Utils;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-public abstract class AbstractSHPPeer {
+/**
+ * Abstract class for SHP peers (client and server).
+ * It contains common methods for handling SHP messages which slightly differ between client and server.
+ */
+public abstract class AbstractShpPeer {
 
     protected enum MsgType {
         TYPE_0, // Unused
@@ -23,14 +30,15 @@ public abstract class AbstractSHPPeer {
     private static final short SHP_VERSION = 0x01;
     private static final byte SHP_RELEASE = 0x01;
 
+    protected final Logger LOGGER = Logger.getLogger(this.getClass().getName());
+
     // Common header setup for SHP messages
     private static final byte[] SHP_HEADER = new byte[]{
             (byte) (SHP_VERSION << 4 | SHP_RELEASE), // Version and release
             0x00,   // MsgType Code (where it would be)
     };
 
-    protected AbstractSHPPeer() {
-
+    protected AbstractShpPeer() {
     }
 
     /**
@@ -83,7 +91,32 @@ public abstract class AbstractSHPPeer {
 
     protected abstract void handleMessage(MsgType msgType, byte[] bytes);
 
-    protected abstract void runProtocol();
+
+    protected void runProtocol() {
+        long timeout = System.currentTimeMillis() + TIMEOUT_MS;
+
+        // Main loop for processing messages
+        while (!isConnectionClosed() && System.currentTimeMillis() < timeout) {
+            try {
+                if (!processMessage()) {
+                    LOGGER.warning("Protocol finished.");
+                    break;
+                }
+                timeout = System.currentTimeMillis() + TIMEOUT_MS;
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                LOGGER.warning("Protocol interrupted.");
+                Thread.currentThread().interrupt();
+                break;
+            } catch (IOException e) {
+                LOGGER.log(Level.SEVERE, "Error during protocol execution.", e);
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    // Check if the socket is closed (client or server)
+    protected abstract boolean isConnectionClosed();
 
     protected abstract void loadResources();
 }
