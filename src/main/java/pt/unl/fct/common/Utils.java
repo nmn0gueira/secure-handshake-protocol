@@ -78,6 +78,25 @@ public class Utils
     }
 
     /**
+     * Returns an array of byte arrays, each one being a subarray of the original array, delimited by the indexes
+     * @param array - the original array
+     * @param indexes - the indexes that delimit the subarrays
+     * @return - an array of byte arrays, each one being a subarray of the original array, delimited by the indexes
+     */
+    public static byte[][] divideInParts(byte[] array, int... indexes) {
+        for (int i = 0; i < indexes.length - 1; i++) {
+            if (indexes[i] > indexes[i + 1]) {
+                throw new IllegalArgumentException("Indexes must be in ascending order");
+            }
+        }
+        byte[][] result = new byte[indexes.length - 1][];
+        for (int i = 0; i < indexes.length - 1; i++) {
+            result[i] = subArray(array, indexes[i], indexes[i + 1]);
+        }
+        return result;
+    }
+
+    /**
      * Returns the hexadecimal representation of the payload, with the header and data divided by a separator.
      * For visual purposes.
      * @param payload - the payload to be represented

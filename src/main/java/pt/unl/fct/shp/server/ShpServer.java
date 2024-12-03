@@ -4,7 +4,7 @@ import pt.unl.fct.common.Utils;
 import pt.unl.fct.shp.AbstractShpPeer;
 import pt.unl.fct.shp.ShpCryptoSpec;
 
-import javax.crypto.SecretKey;
+import javax.crypto.KeyAgreement;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -19,6 +19,15 @@ public class ShpServer extends AbstractShpPeer {
     private final ServerSocket serverSocket;
     private Socket clientSocket;
     KeyPair keyPair;
+    private static final byte[] hmacKey = ShpCryptoSpec.generateHash(PASSWORD.getBytes());
+    private final String request;
+    private static final String USER_ID = "userId";
+    private static final String PASSWORD = "password";
+    private KeyPair digitalSignatureKeyPair;
+    private KeyPair keyAgreementKeyPair;
+    private PublicKey serverPublicKey;
+    private KeyAgreement keyAgreement;
+
 
     public ShpServer() throws IOException {
         userDatabase = new HashMap<>();
@@ -50,7 +59,7 @@ public class ShpServer extends AbstractShpPeer {
             byte[] passwordHash = Utils.hexStringToByteArray(parts[1].trim());
             byte[] salt = Utils.hexStringToByteArray(parts[2].trim());
             byte[] publicKeyBytes = Utils.hexStringToByteArray(parts[3].trim());
-            userDatabase.put(userId, new User(userId, passwordHash, salt, ShpCryptoSpec.loadPublicKey(publicKeyBytes)));
+            userDatabase.put(userId, new User(userId, passwordHash, salt, ShpCryptoSpec.loadECPublicKey(publicKeyBytes)));
         }
     }
 
@@ -117,37 +126,44 @@ public class ShpServer extends AbstractShpPeer {
 
     private void handleType3Message(byte[] bytes) {
         LOGGER.info("Received message type 3.");
+        byte[] header = getMessageHeader(MsgType.TYPE_4);
         try {
-            byte[] nonce5 = new byte[ShpCryptoSpec.NONCE_SIZE];
-            byte[] encryptedData = Utils.subArray(bytes, 0,);
-            byte[] ydhClient = Utils.subArray(bytes, );
-            byte[] digitalSig = Utils.subArray(bytes,);
-            byte[] hmac = Utils.subArray(bytes, );
-            String userId = new String(bytes);
+            int encryptedDataLength = bytes.length - ShpCryptoSpec.getPublicDiffieHellmanKeyLength()
+                    - ShpCryptoSpec.getDigitalSignatureLength() - ShpCryptoSpec.getHmacLength();
 
-            if (!userDatabase.containsKey(userId)) {
-                LOGGER.warning("User not found.");
+            byte[] encryptedData = Utils.subArray(bytes, 0, encryptedDataLength);
+            byte[] clientPublicKeyBytes = Utils.subArray(bytes, encryptedDataLength, encryptedDataLength + ShpCryptoSpec.getPublicDiffieHellmanKeyLength());
+            byte[] clientSignature = Utils.subArray(bytes, encryptedDataLength + ShpCryptoSpec.getPublicDiffieHellmanKeyLength(),
+                    encryptedDataLength + ShpCryptoSpec.getPublicDiffieHellmanKeyLength() + ShpCryptoSpec.getDigitalSignatureLength());
+            byte[] hmac = Utils.subArray(bytes, bytes.length - ShpCryptoSpec.getHmacLength(), bytes.length);
+            byte[] decryptedData = ShpCryptoSpec.decryptECC(publicKeyEncryptedData, digitalSignatureKeyPair.getPrivate());
+
+            byte[][] decryptedDataParts = Utils.divideInParts(decryptedData,
+                    0,
+                    2,
+                    2 + ShpCryptoSpec.NONCE_SIZE,
+                    2 + 2 * ShpCryptoSpec.NONCE_SIZE,
+                    decryptedData.length);
+
+            byte[] response = decryptedDataParts[0];
+
+            byte[] hmacData = Utils.subArray(bytes, 0, bytes.length - ShpCryptoSpec.getHmacLength());
+
+
+            if (!ShpCryptoSpec.verifyIntegrity(hmacData, hmacKey, hmac)) {
+                LOGGER.severe("Failed HMAC verification.");
                 return;
-            }
+                }
 
-            // HMAC validation
-            byte[] expectedHMAC = ShpCryptoSpec.generateHMAC(SECRET_KEY.getBytes(), Utils.subArray(bytes, 0, bytes.length - hmac.length));
-            if (!MessageDigest.isEqual(hmac, expectedHMAC)) {
-                LOGGER.warning("Invalid HMAC.");
-                return;
-            }
+                // Validate digital signature
+            if (!ShpCryptoSpec.verify(clientPublicKey, Utils.concat(decryptedData, clientPublicKeyBytes), clientSignature)) {
+                    LOGGER.severe("Invalid client digital signature.");
+                    return;
+                }
 
-            // Validate Digital Signature using the client publickey
-            boolean isSignatureValid = ShpCryptoSpec.verify(user.publicKey(), encryptedData, digitalSig);
-            if (!isSignatureValid) {
-                LOGGER.warning("Invalid digital signature.");
-                return;
-            }
 
-            // Generate DH secret
-            KeyPair serverDHKeyPair = ShpCryptoSpec.generateDHKeyPair();
-            byte[] sharedSecret = ShpCryptoSpec.generateSharedSecret(serverDHKeyPair.getPrivate(), ydhClient);
-
+            // Decript data received
+            byte[] decryptedData = ShpCryptoSpec.passwordBasedDecryption(encryptedData);
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error processing TYPE_3 message.", e);

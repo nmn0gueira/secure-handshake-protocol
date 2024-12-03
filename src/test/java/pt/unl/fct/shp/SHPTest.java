@@ -5,11 +5,12 @@ import pt.unl.fct.shp.client.ShpClient;
 import pt.unl.fct.shp.server.ShpServer;
 
 import java.io.IOException;
+import java.security.InvalidKeyException;
 
 public class SHPTest {
 
     @Test
-    public void SHP() throws IOException, InterruptedException {
+    public void SHP() throws IOException, InterruptedException, InvalidKeyException {
         new Thread(() -> {
             try {
                 new ShpServer();
