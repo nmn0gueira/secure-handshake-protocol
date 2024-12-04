@@ -1,4 +1,4 @@
-package pt.unl.fct.common;
+package pt.unl.fct.common.crypto;
 
 import java.io.IOException;
 import java.io.InputStream;

@@ -55,7 +55,8 @@ public abstract class AbstractShpPeer {
      */
     protected byte[][] extractHeaderAndPayload(byte[] message) {
         if (message.length < 2) {   // Should not happen
-            throw new IllegalArgumentException("Message is too short to contain a header");
+            LOGGER.severe("Message is too short to contain a header");
+            throw new IllegalArgumentException();
         }
         byte[] header = Utils.subArray(message, 0, 2);
         byte[] payload = Utils.subArray(message, 2, message.length);
@@ -68,7 +69,7 @@ public abstract class AbstractShpPeer {
         int bytesRead = input.read(response);
 
         if (bytesRead == -1) {
-            LOGGER.info("Connection closed.");
+            LOGGER.warning("Connection closed.");
             return false;
         }
         if (bytesRead == 0) {

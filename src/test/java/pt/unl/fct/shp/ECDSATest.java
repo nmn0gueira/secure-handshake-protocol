@@ -2,6 +2,7 @@ package pt.unl.fct.shp;
 
 import org.junit.Test;
 import pt.unl.fct.common.Utils;
+import pt.unl.fct.shp.crypto.ShpCryptoSpec;
 
 import java.security.KeyPair;
 

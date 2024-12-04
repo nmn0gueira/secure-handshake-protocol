@@ -1,5 +1,6 @@
 package pt.unl.fct.dstp;
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -10,9 +11,11 @@ import java.lang.reflect.Method;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.Security;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -60,6 +63,9 @@ public class SecureDatagramSocketTest {
     private SecureDatagramSocket serverSocket;
     private SecureDatagramSocket clientSocket;
     private static final long TIMEOUT_MS = 3000;
+    static {
+        Security.addProvider(new BouncyCastleProvider());
+    }
 
 
     private int setup(String config) throws Exception {
@@ -242,9 +248,10 @@ public class SecureDatagramSocketTest {
 
     }
 
-    static Stream<String> configFilesProvider() throws IOException {
+    static Stream<String> configFilesProvider() throws IOException, URISyntaxException {
         // Directory where your config files are stored
-        return Files.walk(Paths.get("test-configs"))
+        Path configDir = Paths.get(SecureDatagramSocketTest.class.getClassLoader().getResource("test-configs").toURI());
+        return Files.walk(configDir)
                 .filter(Files::isRegularFile)
                 .map(Path::toString);
     }

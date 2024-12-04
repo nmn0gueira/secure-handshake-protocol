@@ -1,6 +1,7 @@
 package pt.unl.fct.dstp;
 
 import pt.unl.fct.common.Utils;
+import pt.unl.fct.dstp.crypto.DstpCryptoSpec;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.BadPaddingException;
@@ -8,6 +9,7 @@ import java.net.DatagramPacket;
 import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.logging.Logger;
 
 class SecureSocketBase {
 
@@ -18,7 +20,7 @@ class SecureSocketBase {
     private long timestamp;
     private int sequenceNumber;
     private final Set<Integer> receivedSequenceNumbers;
-    private static final boolean VERBOSE = false;
+    private static final Logger LOGGER = Logger.getLogger(SecureSocketBase.class.getName());
 
     // Common header setup for DSTP packets
     private final byte[] header = new byte[]{
@@ -60,7 +62,7 @@ class SecureSocketBase {
 
         byte[] payload;
 
-        if (dstpCryptoSpec.isUsingHMac()) {
+        if (dstpCryptoSpec.usesMac()) {
             // Payload: Encrypted(sequence number + data) + integrity proof
             payload = Utils.concat(dstpCryptoSpec.encrypt(Utils.concat(
                     sequenceNumberBytes,
@@ -100,35 +102,29 @@ class SecureSocketBase {
 
         // If the packet cannot be decrypted, return false (this may happen with tampered packets when using padding)
         try {
-            if (dstpCryptoSpec.isUsingHMac()) {
+            if (dstpCryptoSpec.usesMac()) {
                 // Payload: Encrypted(sequence number + data) + integrity proof
-                decryptedData = dstpCryptoSpec.decrypt(Utils.subArray(payload, 0, payload.length - dstpCryptoSpec.getIntegrityProofLength()));
+                decryptedData = dstpCryptoSpec.decrypt(Utils.subArray(payload, 0, payload.length - dstpCryptoSpec.getIntegrityProofSize()));
                 receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length);
-                integrityProof = Utils.subArray(payload, payload.length - dstpCryptoSpec.getIntegrityProofLength(), payload.length);
+                integrityProof = Utils.subArray(payload, payload.length - dstpCryptoSpec.getIntegrityProofSize(), payload.length);
             } else {
                 // Payload: Encrypted(sequence number + data + integrity proof)
                 decryptedData = dstpCryptoSpec.decrypt(payload);
-                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length - dstpCryptoSpec.getIntegrityProofLength());
-                integrityProof = Utils.subArray(decryptedData, decryptedData.length - dstpCryptoSpec.getIntegrityProofLength(), decryptedData.length);
+                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length - dstpCryptoSpec.getIntegrityProofSize());
+                integrityProof = Utils.subArray(decryptedData, decryptedData.length - dstpCryptoSpec.getIntegrityProofSize(), decryptedData.length);
             }
 
         }
         catch (AEADBadTagException e) {
-            if (VERBOSE) {
-                System.err.println("AEADBadTagException: " + e.getMessage());
-            }
+            LOGGER.severe("AEADBadTagException: " + e.getMessage());
             return false;
         }
         catch (BadPaddingException e) {
-            if (VERBOSE) {
-                System.err.println("Received packet with invalid padding, this may be due to tampering or a bad key");
-            }
+            LOGGER.warning("Received packet with invalid padding, this may be due to tampering or a bad key");
             return false;
         }
         catch (GeneralSecurityException e) {
-            if (VERBOSE) {
-                System.err.println("GeneralSecurityException: " + e.getMessage());
-            }
+            LOGGER.severe("GeneralSecurityException: " + e.getMessage());
             return false;
         }
 
@@ -140,17 +136,13 @@ class SecureSocketBase {
         // Do not process packets with duplicate sequence numbers
         if (!receivedSequenceNumbers.add(sequenceNum))
         {
-            if (VERBOSE) {
-                System.err.println("Received packet with duplicate sequence number: " + sequenceNum);
-            }
+            LOGGER.severe("Received packet with duplicate sequence number: " + sequenceNum);
             return false;
         }
 
         //  Do not process packets that were tampered with
         if (!dstpCryptoSpec.verifyIntegrity(receivedMessage, sequenceNumBytes, integrityProof)) {
-            if (VERBOSE) {
-                System.err.println("Received packet with invalid integrity proof");
-            }
+            LOGGER.severe("Received packet with invalid integrity proof");
             return false;
         }
 

@@ -146,6 +146,16 @@ public class Utils
             return subArray(data, data.length - x, data.length);
         }
     }
+
+    public static byte[] getIncrementedBytes(byte[] bytes) {
+        byte[] incrementedNonce = bytes.clone();
+        for (int i = incrementedNonce.length - 1; i >= 0; i--) {
+            if (++incrementedNonce[i] != 0) {
+                break;
+            }
+        }
+        return incrementedNonce;
+    }
 }
 
 
