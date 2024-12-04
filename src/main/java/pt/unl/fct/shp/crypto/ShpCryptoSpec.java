@@ -53,8 +53,7 @@ public class ShpCryptoSpec {
         }
     }
 
-    //TODO: A soluçao ao problema de ter que instanciar em vez de usar estaticamente é criar cada component a null e
-    // inicializar no primeiro uso o que tambem ajuda com a inicializaçao preguiçosa
+
     public static int SALT_SIZE = 8;
     public static int ITERATION_COUNTER_SIZE = 4;
     public static int NONCE_SIZE = 8;
