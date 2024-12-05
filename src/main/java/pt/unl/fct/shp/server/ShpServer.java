@@ -139,51 +139,51 @@ public class ShpServer extends AbstractShpPeer {
     private void handleType3Message(byte[] bytes) {
         LOGGER.info("Received message type 3.");
         try {
-            /*int encryptedDataLength = bytes.length - serverCryptoSpec.getPublicDiffieHellmanKeyLength()
-                    - serverCryptoSpec.getDigitalSignatureLength() - serverCryptoSpec.getIntegrityProofSize();
+            try {
 
-            byte[] encryptedData = Utils.subArray(bytes, 0, encryptedDataLength);
-            byte[] clientPublicKeyBytes = Utils.subArray(bytes, encryptedDataLength, encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength());
-            byte[] clientSignature = Utils.subArray(bytes, encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength(),
-                    encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength() + serverCryptoSpec.getDigitalSignatureLength());
-            byte[] hmac = Utils.subArray(bytes, bytes.length - serverCryptoSpec.getIntegrityProofSize(), bytes.length);
-            byte[] decryptedData = serverCryptoSpec.asymmetricDecrypt(encryptedData);
+                int encryptedDataLength = bytes.length
+                        - serverCryptoSpec.getPublicDiffieHellmanKeyLength()
+                        - serverCryptoSpec.getDigitalSignatureLength()
+                        - serverCryptoSpec.getIntegrityProofSize();
 
+                byte[][] messageParts = Utils.divideInParts(bytes,
+                        0,
+                        encryptedDataLength,
+                        encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength(),
+                        encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength() + serverCryptoSpec.getDigitalSignatureLength(),
+                        bytes.length - serverCryptoSpec.getIntegrityProofSize(),
+                        bytes.length);
 
-            byte[][] decryptedDataParts = Utils.divideInParts(decryptedData,
-                    0,
-                    2,
-                    2 + ShpCryptoSpec.NONCE_SIZE,
-                    2 + 2 * ShpCryptoSpec.NONCE_SIZE,
-                    decryptedData.length);
-
-            byte[] response = decryptedDataParts[0];
-
-            byte[] hmacData = Utils.subArray(bytes, 0, bytes.length - serverCryptoSpec.getIntegrityProofSize());
-
-            /*
-            if (!ShpCryptoSpec.verifyIntegrity(hmacData, hmacKey, hmac)) {
-                LOGGER.severe("Failed HMAC verification.");
-                return;
-            }
+                byte[] encryptedData = messageParts[0];
+                byte[] clientPublicKeyBytes = messageParts[1];
+                byte[] clientSignature = messageParts[2];
+                byte[] hmac = messageParts[3];
 
 
-            // Validate digital signature
-            if (!ShpCryptoSpec.verify(clientPublicKey, Utils.concat(decryptedData, clientPublicKeyBytes), clientSignature)) {
+                byte[] dataToVerifyHmac = Utils.subArray(bytes, 0, bytes.length - serverCryptoSpec.getIntegrityProofSize());
+                if (!serverCryptoSpec.verifyIntegrity(dataToVerifyHmac, hmac)) {
+                    LOGGER.severe("Failed HMAC verification.");
+                    return;
+                }
+
+
+                PublicKey clientPublicKey = CryptoUtils.loadECPublicKey(clientPublicKeyBytes);
+                byte[] signatureData = Utils.concat(encryptedData, clientPublicKeyBytes);
+                if (!serverCryptoSpec.verify(clientPublicKey, signatureData, clientSignature)) {
                     LOGGER.severe("Invalid client digital signature.");
                     return;
                 }
-            */
 
-            // Decrypt data received
-            //byte[] decryptedData = ShpCryptoSpec.passwordBasedDecryption(encryptedData);*/
+
+                byte[] decryptedData = serverCryptoSpec.passwordBasedDecrypt(encryptedData);
+
             byte[] header = getMessageHeader(MsgType.TYPE_4);
             System.out.println("Chegou aqui");
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error processing TYPE_3 message.", e);
         }
-    }
+
 
     private void handleType5Message(byte[] bytes) {
         LOGGER.info("Received message type 5.");
