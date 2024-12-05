@@ -10,6 +10,7 @@ import java.io.InputStreamReader;
 import java.security.*;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
+import java.security.spec.ECGenParameterSpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
@@ -19,6 +20,8 @@ public class CryptoUtils {
 
     private static final KeyFactory DIFFIE_HELLMAN_KEY_FACTORY;
     private static final KeyFactory ECDSA_KEY_FACTORY;
+    private static final KeyPairGenerator ECDSA_KEY_PAIR_GENERATOR;
+    private static final ECGenParameterSpec EC_GEN_PARAMETER_SPEC = new ECGenParameterSpec("secp256k1");
 
     static {
         Security.addProvider(new BouncyCastleProvider());
@@ -26,9 +29,21 @@ public class CryptoUtils {
         try {
             DIFFIE_HELLMAN_KEY_FACTORY = KeyFactory.getInstance("DH", "BC");
             ECDSA_KEY_FACTORY = KeyFactory.getInstance("ECDSA", "BC");
-        } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
+            ECDSA_KEY_PAIR_GENERATOR = KeyPairGenerator.getInstance("ECDSA", "BC");
+            ECDSA_KEY_PAIR_GENERATOR.initialize(EC_GEN_PARAMETER_SPEC, CryptoUtils.SECURE_RANDOM);
+
+        } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidAlgorithmParameterException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * Generates an ECC key pair using the secp256k1 curve. Used for testing purposes and pre-generated keys.
+     *
+     * @return The generated key pair
+     */
+    public static KeyPair generateECDSAKeyPair()  {
+        return ECDSA_KEY_PAIR_GENERATOR.generateKeyPair();
     }
 
 

@@ -5,6 +5,7 @@ import pt.unl.fct.common.Utils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,9 +24,17 @@ public abstract class AbstractShpPeer {
         TYPE_5;
     }
 
+    protected enum State {
+        CLOSED,
+        ONGOING,
+        WAITING,
+        FINISHED;
+    }
+
     protected OutputStream output;
     protected InputStream input;
     protected static final int PORT = 7777;
+    protected static final byte[] UDP_PORT_BYTES = ByteBuffer.allocate(Integer.BYTES).putInt(PORT).array();
     protected static final int TIMEOUT_MS = 10000;
     private static final short SHP_VERSION = 0x01;
     private static final byte SHP_RELEASE = 0x01;
@@ -53,7 +62,7 @@ public abstract class AbstractShpPeer {
     /**
      * Extract header and payload from the provided message.
      */
-    protected byte[][] extractHeaderAndPayload(byte[] message) {
+    private byte[][] extractHeaderAndPayload(byte[] message) {
         if (message.length < 2) {   // Should not happen
             LOGGER.severe("Message is too short to contain a header");
             throw new IllegalArgumentException();
@@ -63,26 +72,25 @@ public abstract class AbstractShpPeer {
         return new byte[][]{header, payload};
     }
 
-    // Refactored method to handle reading and processing messages
-    protected boolean processMessage() throws IOException {
-        byte[] response = new byte[1024];
-        int bytesRead = input.read(response);
+    // Method to handle reading and processing messages
+    private State processMessage() throws IOException {
+        byte[] response = new byte[4096];
+
+        int bytesRead = input.read(response, 0, input.available());
 
         if (bytesRead == -1) {
             LOGGER.warning("Connection closed.");
-            return false;
+            return State.CLOSED;
         }
         if (bytesRead == 0) {
-            return true;  // Connection alive, continue listening for messages
+            return State.WAITING;  // Connection alive, continue listening for messages
         }
 
         byte[] actualData = Utils.subArray(response, 0, bytesRead);
         byte[][] message = extractHeaderAndPayload(actualData);
         MsgType msgType = getMessageType(message[0]);
 
-        handleMessage(msgType, message[1]);
-
-        return msgType != MsgType.TYPE_5; // If TYPE_5 is received, server finishes
+        return handleMessage(msgType, message[1]);
     }
 
     protected MsgType getMessageType(byte[] header) {
@@ -90,7 +98,7 @@ public abstract class AbstractShpPeer {
     }
 
 
-    protected abstract void handleMessage(MsgType msgType, byte[] bytes);
+    protected abstract State handleMessage(MsgType msgType, byte[] bytes);
 
 
     protected void runProtocol() {
@@ -99,12 +107,18 @@ public abstract class AbstractShpPeer {
         // Main loop for processing messages
         while (!isConnectionClosed() && System.currentTimeMillis() < timeout) {
             try {
-                if (!processMessage()) {
-                    LOGGER.warning("Protocol finished.");
-                    break;
+                switch (processMessage()) {
+                    case CLOSED -> {
+                        LOGGER.warning("Connection closed.");
+                        return;
+                    }
+                    case FINISHED -> {
+                        LOGGER.info("Protocol finished.");
+                        return;
+                    }
+                    case ONGOING -> timeout = System.currentTimeMillis() + TIMEOUT_MS;
+                    case WAITING -> Thread.sleep(1000);
                 }
-                timeout = System.currentTimeMillis() + TIMEOUT_MS;
-                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 LOGGER.warning("Protocol interrupted.");
                 Thread.currentThread().interrupt();

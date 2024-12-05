@@ -19,8 +19,6 @@ public class ShpIntegrityCheck implements IntegrityCheck {
         }
     }
 
-    public static final int INTEGRITY_PROOF_SIZE = HMAC_SHA256.getMacLength();
-
     public ShpIntegrityCheck(byte[] key) throws GeneralSecurityException {
         HMAC_SHA256.init(new SecretKeySpec(key, "HMAC-SHA256"));
     }

@@ -16,7 +16,7 @@ class SecureSocketBase {
     protected static final int UDP_MAX_SIZE = 65507;
     private static final short DSTP_VERSION = 0x0002;
     private static final byte DSTP_RELEASE = 0x01;
-    private final DstpCryptoSpec dstpCryptoSpec;
+    private final DstpCryptoSpec cryptoSpec;
     private long timestamp;
     private int sequenceNumber;
     private final Set<Integer> receivedSequenceNumbers;
@@ -32,7 +32,7 @@ class SecureSocketBase {
     };
 
     protected SecureSocketBase(String cryptoConfigFile) {
-        dstpCryptoSpec = new DstpCryptoSpec(cryptoConfigFile);
+        cryptoSpec = new DstpCryptoSpec(cryptoConfigFile);
         // Sequence number will be the first 4
         timestamp = System.currentTimeMillis();
         receivedSequenceNumbers = new HashSet<>();
@@ -51,7 +51,7 @@ class SecureSocketBase {
 
 
         byte[] data = Utils.subArray(packet.getData(), packet.getOffset(), packet.getLength());
-        byte[] integrityProof = dstpCryptoSpec.createIntegrityProof(data, sequenceNumberBytes);
+        byte[] integrityProof = cryptoSpec.createIntegrityProof(data, sequenceNumberBytes);
         sequenceNumber++;
 
         // Reset sequence number and increment timestamp
@@ -62,14 +62,14 @@ class SecureSocketBase {
 
         byte[] payload;
 
-        if (dstpCryptoSpec.usesMac()) {
+        if (cryptoSpec.usesMac()) {
             // Payload: Encrypted(sequence number + data) + integrity proof
-            payload = Utils.concat(dstpCryptoSpec.encrypt(Utils.concat(
+            payload = Utils.concat(cryptoSpec.encrypt(Utils.concat(
                     sequenceNumberBytes,
                     data)), integrityProof);
         } else {
             // Payload: Encrypted(sequence number + data + integrity proof)
-            payload = dstpCryptoSpec.encrypt(Utils.concat(
+            payload = cryptoSpec.encrypt(Utils.concat(
                     sequenceNumberBytes,
                     data,
                     integrityProof));
@@ -102,16 +102,16 @@ class SecureSocketBase {
 
         // If the packet cannot be decrypted, return false (this may happen with tampered packets when using padding)
         try {
-            if (dstpCryptoSpec.usesMac()) {
+            if (cryptoSpec.usesMac()) {
                 // Payload: Encrypted(sequence number + data) + integrity proof
-                decryptedData = dstpCryptoSpec.decrypt(Utils.subArray(payload, 0, payload.length - dstpCryptoSpec.getIntegrityProofSize()));
+                decryptedData = cryptoSpec.decrypt(Utils.subArray(payload, 0, payload.length - cryptoSpec.getIntegrityProofSize()));
                 receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length);
-                integrityProof = Utils.subArray(payload, payload.length - dstpCryptoSpec.getIntegrityProofSize(), payload.length);
+                integrityProof = Utils.subArray(payload, payload.length - cryptoSpec.getIntegrityProofSize(), payload.length);
             } else {
                 // Payload: Encrypted(sequence number + data + integrity proof)
-                decryptedData = dstpCryptoSpec.decrypt(payload);
-                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length - dstpCryptoSpec.getIntegrityProofSize());
-                integrityProof = Utils.subArray(decryptedData, decryptedData.length - dstpCryptoSpec.getIntegrityProofSize(), decryptedData.length);
+                decryptedData = cryptoSpec.decrypt(payload);
+                receivedMessage = Utils.subArray(decryptedData, 2, decryptedData.length - cryptoSpec.getIntegrityProofSize());
+                integrityProof = Utils.subArray(decryptedData, decryptedData.length - cryptoSpec.getIntegrityProofSize(), decryptedData.length);
             }
 
         }
@@ -141,7 +141,7 @@ class SecureSocketBase {
         }
 
         //  Do not process packets that were tampered with
-        if (!dstpCryptoSpec.verifyIntegrity(receivedMessage, sequenceNumBytes, integrityProof)) {
+        if (!cryptoSpec.verifyIntegrity(receivedMessage, sequenceNumBytes, integrityProof)) {
             LOGGER.severe("Received packet with invalid integrity proof");
             return false;
         }

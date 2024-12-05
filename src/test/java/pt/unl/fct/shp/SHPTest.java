@@ -1,19 +1,22 @@
 package pt.unl.fct.shp;
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.Test;
 import pt.unl.fct.shp.client.ShpClient;
 import pt.unl.fct.shp.server.ShpServer;
 
 import java.io.IOException;
-import java.security.InvalidKeyException;
+import java.security.Security;
 
 public class SHPTest {
 
     @Test
-    public void SHP() throws IOException, InterruptedException, InvalidKeyException {
+    public void SHP() throws IOException, InterruptedException {
+        Security.addProvider(new BouncyCastleProvider());
         new Thread(() -> {
             try {
-                new ShpServer();
+                new ShpServer(null);
+                System.out.println("Server started");
             } catch (Exception e) {
                 e.printStackTrace();
             }

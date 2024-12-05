@@ -10,6 +10,7 @@ import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 import java.security.GeneralSecurityException;
 import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.spec.InvalidKeySpecException;
 
 public class ShpPbeCipher implements SymmetricCipher {
@@ -19,9 +20,9 @@ public class ShpPbeCipher implements SymmetricCipher {
 
     static {
         try {
-            PBE_CIPHER = Cipher.getInstance("PBEWithHmacSHA256AndAES_128");
-            PBE_KEY_FACTORY = SecretKeyFactory.getInstance("PBEWithHmacSHA256AndAES_128");
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
+            PBE_CIPHER = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
+            PBE_KEY_FACTORY = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException | NoSuchProviderException e) {
             throw new RuntimeException(e);
         }
     }
@@ -31,7 +32,7 @@ public class ShpPbeCipher implements SymmetricCipher {
     private final int iterationCount;
 
     public ShpPbeCipher(String password, byte[] salt, int iterationCount) throws InvalidKeySpecException {
-        this.key = PBE_KEY_FACTORY.generateSecret(new PBEKeySpec(password.toCharArray(), salt, iterationCount));
+        this.key = PBE_KEY_FACTORY.generateSecret(new PBEKeySpec(password.toCharArray()));
         this.salt = salt;
         this.iterationCount = iterationCount;
     }

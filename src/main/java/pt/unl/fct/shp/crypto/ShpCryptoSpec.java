@@ -1,9 +1,10 @@
 package pt.unl.fct.shp.crypto;
 
-import pt.unl.fct.common.crypto.CryptoUtils;
+import pt.unl.fct.common.crypto.*;
 
 import javax.crypto.*;
 import javax.crypto.spec.DHParameterSpec;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.security.*;
 import java.security.spec.ECGenParameterSpec;
@@ -11,92 +12,93 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.spec.InvalidKeySpecException;
+import java.util.logging.Logger;
 
 
 public class ShpCryptoSpec {
 
-    private static final KeyPairGenerator DIFFIE_HELLMAN_KEY_PAIR_GENERATOR;
-    private static final KeyPairGenerator ECDSA_KEY_PAIR_GENERATOR;
-    private static final ECGenParameterSpec EC_GEN_PARAMETER_SPEC = new ECGenParameterSpec("secp256k1");
-    private static final Signature ECDSA_SIGNATURE;
-    private static final Signature ECDSA_VERIFIER;
     private static final MessageDigest SHA256;
-
-    /*
-     * Pre-computed values for the primitive root G and
-     * prime number P, that will be used for the dynamic key-agreement
-     *
-     */
-    private static final BigInteger G_512 = new BigInteger(
-            "153d5d6172adb43045b68ae8e1de1070b6137005686d29d3d73a7"
-                    + "749199681ee5b212c9b96bfdcfa5b20cd5e3fd2044895d609cf9b"
-                    + "410b7a0f12ca1cb9a428cc", 16);
-
-    private static final BigInteger P_512 = new BigInteger(
-            "9494fec095f3b85ee286542b3836fc81a5dd0a0349b4c239dd387"
-                    + "44d488cf8e31db8bcb7d33b41abb9e5a33cca9144b1cef332c94b"
-                    + "f0573bf047a3aca98cdf3b", 16);
-
-    private static final DHParameterSpec DH_PARAMETER_SPEC = new DHParameterSpec(P_512, G_512);
+    private static final Logger LOGGER = Logger.getLogger(ShpCryptoSpec.class.getName());
 
     static {
         try {
-            DIFFIE_HELLMAN_KEY_PAIR_GENERATOR = KeyPairGenerator.getInstance("DH", "BC");
-            ECDSA_KEY_PAIR_GENERATOR = KeyPairGenerator.getInstance("ECDSA", "BC");
-            ECDSA_SIGNATURE = Signature.getInstance("SHA256withECDSA", "BC");
-            ECDSA_VERIFIER = Signature.getInstance("SHA256withECDSA", "BC");
             SHA256 = MessageDigest.getInstance("SHA-256", "BC");
-            DIFFIE_HELLMAN_KEY_PAIR_GENERATOR.initialize(DH_PARAMETER_SPEC);
-            ECDSA_KEY_PAIR_GENERATOR.initialize(EC_GEN_PARAMETER_SPEC, CryptoUtils.SECURE_RANDOM);
-        } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidAlgorithmParameterException e) {
+        } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
             throw new RuntimeException(e);
         }
     }
 
+    public static final int SALT_SIZE = 8;
+    public static final int ITERATION_COUNTER_SIZE = 2;
+    public static final int NONCE_SIZE = 8;
+    public static final String REQUEST_CONFIRMATION = "OK";
+    public static final String FINISH_PROTOCOL = "GO";
 
-    public static int SALT_SIZE = 8;
-    public static int ITERATION_COUNTER_SIZE = 4;
-    public static int NONCE_SIZE = 8;
-    public static String REQUEST_CONFIRMATION = "OK";
+    private static final int MIN_ITERATIONS = 10000;
+    private static final int MAX_ITERATIONS = 65536;
 
-    public ShpCryptoSpec() {
+    private SymmetricCipher pbeCipher;
+    private SymmetricCipher sharedKeyCipher;
+    private IntegrityCheck integrityCheck;
+    private final AsymmetricCipher asymmetricCipher;
+    private final DigitalSignature digitalSignature;
+    private final CustomKeyAgreement keyAgreement;
+
+    private final KeyPair peerKeyPair;
+
+
+    public ShpCryptoSpec(String keyPairPath) {
+        this.asymmetricCipher = new ShpAsymmetricCipher();
+        this.digitalSignature = new ShpDigitalSignature();
+        this.keyAgreement = new ShpKeyAgreement();
+        try {
+            this.peerKeyPair = CryptoUtils.loadKeyPairFromFile(keyPairPath);
+        } catch (IOException | GeneralSecurityException e) {
+            LOGGER.severe("Error loading key pair from file.");
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    public void initPbeCipher(String password, byte[] salt, int iterationCount) throws InvalidKeySpecException {
+        this.pbeCipher = new ShpPbeCipher(password, salt, iterationCount);
+    }
+
+    public void initSharedKeyCipher(byte[] sharedKey) {
+        this.sharedKeyCipher = new ShpSharedKeyCipher(sharedKey);
+    }
+
+    public void initIntegrityCheck(byte[] key)  {
+        try {
+            this.integrityCheck = new ShpIntegrityCheck(key);
+        } catch (GeneralSecurityException e) {
+            LOGGER.severe("Error initializing integrity check.");
+            throw new RuntimeException(e);
+        }
     }
 
     /**
-     * Generates Diffie-Hellman key pair.
-     *
-     * @return The generated key pair
+     * Generates a shared key using the provided public key. Two-way Diffie-Hellman key exchange is performed.
+     * @param publicKey The public key to generate the shared key with
+     * @return The generated shared key
+     * @throws GeneralSecurityException
      */
-    public static KeyPair generateKeyAgreementKeyPair() {
-        return DIFFIE_HELLMAN_KEY_PAIR_GENERATOR.generateKeyPair();
-    }
-
-    public static KeyAgreement createKeyAgreement() throws NoSuchAlgorithmException, NoSuchProviderException {
-        return KeyAgreement.getInstance("DH", "BC");
-    }
-
-    /**
-     * Generates an ECC key pair using the secp256k1 curve.
-     *
-     * @return The generated key pair
-     */
-    public static KeyPair generateECDSAKeyPair()  {
-        return ECDSA_KEY_PAIR_GENERATOR.generateKeyPair();
+    public byte[] generateSharedKey(byte[] publicKey) throws GeneralSecurityException {
+        keyAgreement.doPhase(CryptoUtils.loadDHPublicKey(publicKey));
+        return this.keyAgreement.generateSecret();
     }
 
     /**
      * Generates an ECDSA digital signature.
      *
-     * @param privateKey The private key to sign with
      * @param message    The message to be signed
      * @return The generated signature as a byte array
      * @throws InvalidKeyException In case of invalid key
      * @throws SignatureException   In case of signature failure
      */
-    public static byte[] sign(PrivateKey privateKey, byte[] message) throws InvalidKeyException, SignatureException {
-        ECDSA_SIGNATURE.initSign(privateKey, CryptoUtils.SECURE_RANDOM);
-        ECDSA_SIGNATURE.update(message);
-        return ECDSA_SIGNATURE.sign();
+    public byte[] sign(byte[] message) throws InvalidKeyException, SignatureException {
+        return digitalSignature.sign(peerKeyPair.getPrivate(), message);
     }
 
     /**
@@ -109,93 +111,151 @@ public class ShpCryptoSpec {
      * @throws InvalidKeyException In case of invalid key
      * @throws SignatureException   In case of signature failure
      */
-    public static boolean verify(PublicKey publicKey, byte[] message, byte[] signature) throws InvalidKeyException, SignatureException {
-        ECDSA_VERIFIER.initVerify(publicKey);
-        ECDSA_VERIFIER.update(message);
-        return ECDSA_VERIFIER.verify(signature);
+    public boolean verify(PublicKey publicKey, byte[] message, byte[] signature) throws InvalidKeyException, SignatureException, InvalidKeySpecException {
+        return digitalSignature.verify(publicKey, message, signature);
     }
 
     /**
      * Generates a HMAC using the provided secret key.
      *
-     * @param secretKey Secret key for the HMAC
      * @param data Data for which the HMAC will be generated
      * @return The generated HMAC as a byte array
      * @throws InvalidKeyException In case of invalid key
      */
-    public static byte[] createIntegrityProof(byte[] secretKey, byte[] data) throws GeneralSecurityException {
-        return (new ShpIntegrityCheck(secretKey)).createIntegrityProof(data, null);
+    public byte[] createIntegrityProof(byte[] data) throws GeneralSecurityException {
+        if (integrityCheck == null) {
+            LOGGER.severe("Integrity check not initialized.");
+            throw new IllegalStateException();
+        }
+        return integrityCheck.createIntegrityProof(data, null);
     }
 
     /**
      * Verifies the integrity of the data by comparing the integrity proof with a freshly generated one.
      */
-    public static boolean verifyIntegrity(byte[] data, byte[] secretKey, byte[] integrityProof) throws GeneralSecurityException {
-        return (new ShpIntegrityCheck(secretKey)).verifyIntegrity(data, null, integrityProof);
+    public boolean verifyIntegrity(byte[] data, byte[] integrityProof) throws GeneralSecurityException {
+        if (integrityCheck == null) {
+            LOGGER.severe("Integrity check not initialized.");
+            throw new IllegalStateException();
+        }
+        return integrityCheck.verifyIntegrity(data, null, integrityProof);
+    }
+
+    public static byte[] generateShpSalt() {
+        byte[] salt = new byte[ShpCryptoSpec.SALT_SIZE];
+        CryptoUtils.SECURE_RANDOM.nextBytes(salt);
+        return salt;
+    }
+
+    public static byte[] generateShpIterationBytes() {
+        int iterations = MIN_ITERATIONS + CryptoUtils.SECURE_RANDOM.nextInt(MAX_ITERATIONS - MIN_ITERATIONS);
+        // Convert to a 2-byte array
+        byte[] iterationBytes = new byte[ITERATION_COUNTER_SIZE];
+        iterationBytes[0] = (byte) (iterations >> 8); // High byte
+        iterationBytes[1] = (byte) (iterations);
+        return iterationBytes;
+    }
+
+    public static byte[] generateShpNonce() {
+        byte[] nonce = new byte[ShpCryptoSpec.NONCE_SIZE];
+        CryptoUtils.SECURE_RANDOM.nextBytes(nonce);
+        return nonce;
     }
 
     /**
      * Generates a SH256 digest for the provided data.
      *
-     * @param data Data for which the HMAC will be generated
+     * @param data Data for which the digest will be generated
      * @return The generated digest as a byte array
      */
     public static byte[] digest(byte[] data) {
         return SHA256.digest(data);
     }
 
-    public static int getDigitalSignatureLength() {
-        return ECDSA_SIGNATURE.getAlgorithm().length();
+    public int getDigitalSignatureLength() {
+        return digitalSignature.getSignatureLength();
     }
 
-    public static int getPublicDiffieHellmanKeyLength() {
-        return DH_PARAMETER_SPEC.getP().bitLength();
+    public byte[] getPublicDiffieHellmanKeyBytes() {
+        return keyAgreement.getPublicKey().getEncoded();
     }
 
-    public static int getIntegrityProofSize() {
-        return ShpIntegrityCheck.INTEGRITY_PROOF_SIZE;
+    public int getPublicDiffieHellmanKeyLength() {
+        return keyAgreement.getPublicKey().getEncoded().length;
+    }
+
+    public int getIntegrityProofSize() {
+        if (integrityCheck == null) {
+            LOGGER.severe("Integrity check not initialized.");
+            throw new IllegalStateException();
+        }
+        return integrityCheck.getIntegrityProofSize();
     }
 
     /**
      * Encrypts data using password-based encryption.
      * @param data Data to be encrypted
-     * @param password Password to be used for encryption
-     * @param salt Salt to be used for encryption
-     * @param iterationCount Number of iterations
      * @return The encrypted data as a byte array
      * @throws GeneralSecurityException In case of security error
      */
-    public static byte[] passwordBasedEncrypt(byte[] data, String password, byte[] salt, int iterationCount) throws GeneralSecurityException {
-        return (new ShpPbeCipher(password, salt, iterationCount)).encrypt(data);
+    public byte[] passwordBasedEncrypt(byte[] data) throws GeneralSecurityException {
+        if (pbeCipher == null) {
+            LOGGER.severe("PBE cipher not initialized.");
+            throw new IllegalStateException();
+        }
+        return pbeCipher.encrypt(data);
+    }
+
+    public byte[] passwordBasedEncrypt(byte[] data, String password, byte[] salt, int iterationCount) throws GeneralSecurityException {
+        initPbeCipher(password, salt, iterationCount);
+        return passwordBasedEncrypt(data);
     }
 
     /**
      * Decrypts data using password-based encryption.
      * @param encryptedData Encrypted data to be decrypted
-     * @param password Password to be used for decryption
-     * @param salt Salt to be used for decryption
-     * @param iterationCount Number of iterations
      * @return The decrypted data as a byte array
      * @throws GeneralSecurityException In case of security error
      */
-    public static byte[] passwordBasedDecrypt(byte[] encryptedData, String password, byte[] salt, int iterationCount) throws GeneralSecurityException {
-        return (new ShpPbeCipher(password, salt, iterationCount)).decrypt(encryptedData);
+    public byte[] passwordBasedDecrypt(byte[] encryptedData) throws GeneralSecurityException {
+        if (pbeCipher == null) {
+            LOGGER.severe("PBE cipher not initialized.");
+            throw new IllegalStateException();
+        }
+        return pbeCipher.decrypt(encryptedData);
     }
 
-    public static byte[] sharedKeyEncrypt(byte[] data, byte[] key) throws GeneralSecurityException {
-        return (new ShpSharedKeyCipher(key)).encrypt(data);
+    public byte[] passwordBasedDecrypt(byte[] encryptedData, String password, byte[] salt, int iterationCount) throws GeneralSecurityException {
+        initPbeCipher(password, salt, iterationCount);
+        return passwordBasedDecrypt(encryptedData);
     }
 
-    public static byte[] sharedKeyDecrypt(byte[] encryptedData, byte[] key) throws GeneralSecurityException {
-        return (new ShpSharedKeyCipher(key)).decrypt(encryptedData);
+    public byte[] sharedKeyEncrypt(byte[] data) throws GeneralSecurityException {
+        if (sharedKeyCipher == null) {
+            LOGGER.severe("Shared key cipher not initialized.");
+            throw new IllegalStateException();
+        }
+        return sharedKeyCipher.encrypt(data);
     }
 
+    public byte[] sharedKeyEncrypt(byte[] data, byte[] sharedKey) throws GeneralSecurityException {
+        initSharedKeyCipher(sharedKey);
+        return sharedKeyEncrypt(data);
+    }
+
+    public byte[] sharedKeyDecrypt(byte[] encryptedData) throws GeneralSecurityException {
+        if (sharedKeyCipher == null) {
+            LOGGER.severe("Shared key cipher not initialized.");
+            throw new IllegalStateException();
+        }
+        return sharedKeyCipher.decrypt(encryptedData);
+    }
 
     public static byte[] asymmetricEncrypt(byte[] data, PublicKey publicKey) throws GeneralSecurityException {
         return (new ShpAsymmetricCipher()).encrypt(data, publicKey);
 
     }
-    public static byte[] asymmetricDecrypt(byte[] encryptedData, PrivateKey privateKey)throws GeneralSecurityException{
-        return (new ShpAsymmetricCipher()).decrypt(encryptedData, privateKey);
+    public byte[] asymmetricDecrypt(byte[] encryptedData) throws GeneralSecurityException{
+        return asymmetricCipher.decrypt(encryptedData, peerKeyPair.getPrivate());
     }
 }

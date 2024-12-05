@@ -5,30 +5,34 @@ import pt.unl.fct.common.crypto.CryptoUtils;
 import pt.unl.fct.shp.AbstractShpPeer;
 import pt.unl.fct.shp.crypto.ShpCryptoSpec;
 
-import javax.crypto.KeyAgreement;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 
 public class ShpServer extends AbstractShpPeer {
 
+    private static final String SERVER_ECC_KEYPAIR_PATH = "server/ServerECCKeyPair.sec";
     private final Map<String, User> userDatabase;
+    private final Set<String> validRequests;
+    private final ShpCryptoSpec serverCryptoSpec;
     private final ServerSocket serverSocket;
     private Socket clientSocket;
-    KeyPair keyPair;
-    private KeyPair digitalSignatureKeyPair;
-    private KeyPair keyAgreementKeyPair;
-    private PublicKey serverPublicKey;
-    private KeyAgreement keyAgreement;
 
 
-    public ShpServer() throws IOException {
+    /**
+     * Creates a new SHP server. TODO: If needed add a parameter for a set that the client request has to be in.
+     * @throws IOException - if an I/O error occurs when creating the ServerSocket.
+     */
+    public ShpServer(Set<String> validRequests) throws IOException {
         userDatabase = new HashMap<>();
+        this.validRequests = validRequests;
         this.serverSocket = new ServerSocket(PORT);
+        this.serverCryptoSpec = new ShpCryptoSpec(SERVER_ECC_KEYPAIR_PATH);
         LOGGER.info("Server is listening on port " + PORT);
         loadResources();
         runProtocol();
@@ -37,7 +41,6 @@ public class ShpServer extends AbstractShpPeer {
     @Override
     protected void loadResources() {
         try {
-            keyPair = CryptoUtils.loadKeyPairFromFile("server/ServerECCKeyPair.sec");
             loadUserDatabase();
         } catch (IOException | GeneralSecurityException e) {
             LOGGER.log(Level.SEVERE, "Failed to load server resources.", e);
@@ -83,10 +86,20 @@ public class ShpServer extends AbstractShpPeer {
     }
 
     @Override
-    protected void handleMessage(MsgType msgType, byte[] bytes) {
+    protected State handleMessage(MsgType msgType, byte[] bytes) {
         switch (msgType) {
-            case TYPE_1 -> handleType1Message(bytes);
-            case TYPE_3 -> handleType3Message(bytes);
+            case TYPE_1 -> {
+                handleType1Message(bytes);
+                return State.ONGOING;
+            }
+            case TYPE_3 -> {
+                handleType3Message(bytes);
+                return State.ONGOING;
+            }
+            case TYPE_5 -> {
+                handleType5Message(bytes);
+                return State.FINISHED;
+            }
             default -> {
                 LOGGER.severe("Unexpected message type: " + msgType);
                 throw new IllegalStateException();
@@ -98,22 +111,24 @@ public class ShpServer extends AbstractShpPeer {
         LOGGER.info("Received message type 1.");
 
         String userId = new String(bytes);
-        if (!userDatabase.containsKey(userId)) {
+        User user = userDatabase.get(userId);
+        if (user == null) {
             LOGGER.warning("User not found.");
             return;
         }
 
-        byte[] salt = new byte[ShpCryptoSpec.SALT_SIZE];
-        CryptoUtils.SECURE_RANDOM.nextBytes(salt);
-        byte[] iterationBytes = new byte[ShpCryptoSpec.ITERATION_COUNTER_SIZE];
-        CryptoUtils.SECURE_RANDOM.nextBytes(iterationBytes);
-        byte[] nonce = new byte[ShpCryptoSpec.NONCE_SIZE];
-        CryptoUtils.SECURE_RANDOM.nextBytes(nonce);
+        serverCryptoSpec.initIntegrityCheck(user.passwordHash());
+
+        //byte[] salt = ShpCryptoSpec.generateShpSalt();
+        byte[] salt = user.salt();
+        byte[] iterationBytes = ShpCryptoSpec.generateShpIterationBytes();
+        byte[] nonce = ShpCryptoSpec.generateShpNonce();
 
         byte[] header = getMessageHeader(MsgType.TYPE_2);
         byte[] message = Utils.concat(header, salt, iterationBytes, nonce);
 
         try {
+            System.out.println(message.length);
             output.write(message);
             LOGGER.info("Sent TYPE_2 response.");
         } catch (IOException e) {
@@ -123,17 +138,16 @@ public class ShpServer extends AbstractShpPeer {
 
     private void handleType3Message(byte[] bytes) {
         LOGGER.info("Received message type 3.");
-        byte[] header = getMessageHeader(MsgType.TYPE_4);
         try {
-            int encryptedDataLength = bytes.length - ShpCryptoSpec.getPublicDiffieHellmanKeyLength()
-                    - ShpCryptoSpec.getDigitalSignatureLength() - ShpCryptoSpec.getIntegrityProofSize();
+            /*int encryptedDataLength = bytes.length - serverCryptoSpec.getPublicDiffieHellmanKeyLength()
+                    - serverCryptoSpec.getDigitalSignatureLength() - serverCryptoSpec.getIntegrityProofSize();
 
             byte[] encryptedData = Utils.subArray(bytes, 0, encryptedDataLength);
-            byte[] clientPublicKeyBytes = Utils.subArray(bytes, encryptedDataLength, encryptedDataLength + ShpCryptoSpec.getPublicDiffieHellmanKeyLength());
-            byte[] clientSignature = Utils.subArray(bytes, encryptedDataLength + ShpCryptoSpec.getPublicDiffieHellmanKeyLength(),
-                    encryptedDataLength + ShpCryptoSpec.getPublicDiffieHellmanKeyLength() + ShpCryptoSpec.getDigitalSignatureLength());
-            byte[] hmac = Utils.subArray(bytes, bytes.length - ShpCryptoSpec.getIntegrityProofSize(), bytes.length);
-            byte[] decryptedData = ShpCryptoSpec.asymmetricDecrypt(encryptedData, digitalSignatureKeyPair.getPrivate());
+            byte[] clientPublicKeyBytes = Utils.subArray(bytes, encryptedDataLength, encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength());
+            byte[] clientSignature = Utils.subArray(bytes, encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength(),
+                    encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength() + serverCryptoSpec.getDigitalSignatureLength());
+            byte[] hmac = Utils.subArray(bytes, bytes.length - serverCryptoSpec.getIntegrityProofSize(), bytes.length);
+            byte[] decryptedData = serverCryptoSpec.asymmetricDecrypt(encryptedData);
 
 
             byte[][] decryptedDataParts = Utils.divideInParts(decryptedData,
@@ -145,7 +159,7 @@ public class ShpServer extends AbstractShpPeer {
 
             byte[] response = decryptedDataParts[0];
 
-            byte[] hmacData = Utils.subArray(bytes, 0, bytes.length - ShpCryptoSpec.getIntegrityProofSize());
+            byte[] hmacData = Utils.subArray(bytes, 0, bytes.length - serverCryptoSpec.getIntegrityProofSize());
 
             /*
             if (!ShpCryptoSpec.verifyIntegrity(hmacData, hmacKey, hmac)) {
@@ -162,10 +176,22 @@ public class ShpServer extends AbstractShpPeer {
             */
 
             // Decrypt data received
-            //byte[] decryptedData = ShpCryptoSpec.passwordBasedDecryption(encryptedData);
+            //byte[] decryptedData = ShpCryptoSpec.passwordBasedDecryption(encryptedData);*/
+            byte[] header = getMessageHeader(MsgType.TYPE_4);
+            System.out.println("Chegou aqui");
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error processing TYPE_3 message.", e);
+        }
+    }
+
+    private void handleType5Message(byte[] bytes) {
+        LOGGER.info("Received message type 5.");
+        try {
+
+
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error processing TYPE_5 message.", e);
         }
     }
 
