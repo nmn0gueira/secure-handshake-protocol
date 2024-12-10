@@ -8,20 +8,21 @@ import pt.unl.fct.shp.server.ShpServer;
 import java.io.IOException;
 import java.security.Security;
 
-public class SHPTest {
+public class ShpTest {
 
     @Test
-    public void SHP() throws IOException, InterruptedException {
+    public void shp() throws IOException, InterruptedException {
         Security.addProvider(new BouncyCastleProvider());
         new Thread(() -> {
             try {
                 new ShpServer(null);
-                System.out.println("Server started");
+                System.out.println("Server thread finished");
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }).start();
         Thread.sleep(1000);
         new ShpClient("request");
+        System.out.println("Client thread finished");
     }
 }

@@ -9,6 +9,7 @@ import java.io.*;
 import java.net.Socket;
 import java.security.*;
 import java.util.HashSet;
+import java.util.List;
 import java.util.logging.Level;
 
 
@@ -28,8 +29,8 @@ public class ShpClient extends AbstractShpPeer {
     public ShpClient(String request) throws IOException {
         this.socket = new Socket("localhost", PORT);
         this.request = request;
-        this.output = socket.getOutputStream();
-        this.input = socket.getInputStream();
+        this.output = new ObjectOutputStream(socket.getOutputStream());
+        this.input = new ObjectInputStream(socket.getInputStream());
         this.noncesReceived = new HashSet<>();
         this.clientCryptoSpec = new ShpCryptoSpec(CLIENT_ECC_KEYPAIR_PATH);
         this.clientCryptoSpec.initIntegrityCheck(ShpCryptoSpec.digest(PASSWORD.getBytes()));
@@ -40,28 +41,25 @@ public class ShpClient extends AbstractShpPeer {
     private void init() {
         byte[] header = getMessageHeader(MsgType.TYPE_1);
         byte[] userId = USER_ID.getBytes();
-        byte[] message = Utils.concat(header, userId);
         try {
-            output.write(message);
+            output.writeObject(createShpMessage(header, userId));
         } catch (IOException e) {
             LOGGER.severe("Error sending message type 1");
         }
     }
 
     @Override
-    protected State handleMessage(MsgType msgType, byte[] bytes) {
+    protected State handleMessage(MsgType msgType, List<byte[]> payload) {
         switch (msgType) {
             case TYPE_2 ->  {
-                handleType2Message(bytes);
-                return State.ONGOING;
+                return handleType2Message(payload);
             }
             case TYPE_4 ->  {
-                handleType4Message(bytes);
-                return State.FINISHED;
+                return handleType4Message(payload);
             }
             default -> {
                 LOGGER.severe("Unexpected message type: " + msgType);
-                throw new IllegalStateException(); // Should not happen
+                return State.ERROR; // Should not happen
             }
         }
     }
@@ -71,25 +69,20 @@ public class ShpClient extends AbstractShpPeer {
         return socket.isClosed();
     }
 
-    private void handleType2Message(byte[] bytes) {
+    private State handleType2Message(List<byte[]> payload) {
         LOGGER.info("Received message type 2");
 
         byte[] header = getMessageHeader(MsgType.TYPE_3);
+
         // Nonce 1 and 2 that will be used for PBE and nonce 3 that will be used for the next message nonce
-        byte[][] receivedData = Utils.divideInParts(bytes,
-                0,
-                ShpCryptoSpec.SALT_SIZE,
-                ShpCryptoSpec.SALT_SIZE + ShpCryptoSpec.ITERATION_COUNTER_SIZE,
-                ShpCryptoSpec.SALT_SIZE + ShpCryptoSpec.ITERATION_COUNTER_SIZE + ShpCryptoSpec.NONCE_SIZE);
+        byte[] salt = Utils.getFirstBytes(payload.get(0), ShpCryptoSpec.SALT_SIZE);
+        byte[] iterationBytes = Utils.getFirstBytes(payload.get(1), ShpCryptoSpec.ITERATION_COUNTER_SIZE);
+        byte[] serverNonce = payload.get(2);
 
-        byte[] salt = receivedData[0];
-        byte[] iterationBytes = receivedData[1];
-        byte[] serverNonce = receivedData[2];
-
-        // Check if any of the nonces received is repeated TODO: See if it is needed according to protocol specification (slides)
+        // Check if any of the nonces received is repeated
         if (!(noncesReceived.add(salt) && noncesReceived.add(iterationBytes) && noncesReceived.add(serverNonce))) {
             LOGGER.severe("Repeated nonce received");
-            throw new RuntimeException();
+            return State.ERROR;
         }
 
         int iterationCount = ((iterationBytes[0] & 0xFF) << 8) | (iterationBytes[1] & 0xFF);
@@ -102,50 +95,40 @@ public class ShpClient extends AbstractShpPeer {
         byte[] data = Utils.concat(request.getBytes(), USER_ID.getBytes(), incrementedServerNonce, clientNonce, UDP_PORT_BYTES);
 
         try {
-            byte[] encryptedData = clientCryptoSpec.passwordBasedEncrypt(data, PASSWORD, salt, iterationCount);
+            byte[] passwordEncryptedData = clientCryptoSpec.passwordBasedEncrypt(data, PASSWORD, salt, iterationCount);
             byte[] ydhClient = clientCryptoSpec.getPublicDiffieHellmanKeyBytes();
             byte[] digitalSig = clientCryptoSpec.sign(Utils.concat(data, ydhClient));
 
-            byte[] message = Utils.concat(encryptedData, ydhClient, digitalSig);
+            byte[] message = Utils.concat(passwordEncryptedData, ydhClient, digitalSig);
             byte[] hmac = clientCryptoSpec.createIntegrityProof(message);
+            output.writeObject(createShpMessage(header, passwordEncryptedData, ydhClient, digitalSig, hmac));
 
-            output.write(Utils.concat(header, message, hmac));
+            return State.ONGOING;
 
         } catch (IOException | GeneralSecurityException e) {
             LOGGER.severe("Error sending message type 3");
-            throw new RuntimeException(e);
+            return State.ERROR;
         }
     }
 
-    private void handleType4Message(byte[] bytes) {
+    private State handleType4Message(List<byte[]> payload) {
         LOGGER.info("Received message type 4");
 
-        int publicKeyEncryptedDataLength = bytes.length - clientCryptoSpec.getPublicDiffieHellmanKeyLength() -
-                clientCryptoSpec.getDigitalSignatureLength() - clientCryptoSpec.getIntegrityProofSize();
+        byte[] publicKeyEncryptedData = payload.get(0);
 
-        byte[][] messageParts = Utils.divideInParts(bytes,
-                0,
-                publicKeyEncryptedDataLength,
-                publicKeyEncryptedDataLength + clientCryptoSpec.getPublicDiffieHellmanKeyLength(),
-                publicKeyEncryptedDataLength + clientCryptoSpec.getPublicDiffieHellmanKeyLength() + clientCryptoSpec.getDigitalSignatureLength(),
-                bytes.length - clientCryptoSpec.getIntegrityProofSize(),
-                bytes.length);
+        byte[] publicServerDiffieHellmanNumber = payload.get(1);
 
-        byte[] publicKeyEncryptedData = messageParts[0];
+        byte[] digitalSignature = payload.get(2);
 
-        byte[] publicServerDiffieHellmanNumber = messageParts[1];
-
-        byte[] digitalSignature = messageParts[2];
-
-        byte[] integrityProof = messageParts[3];
+        byte[] integrityProof = payload.get(3);
 
         // The data to be verified is the message part without the hmac
-        byte[] dataToVerify = Utils.subArray(bytes, 0, bytes.length - clientCryptoSpec.getIntegrityProofSize());
+        byte[] dataToVerify = Utils.concat(publicKeyEncryptedData, publicServerDiffieHellmanNumber, digitalSignature);
 
         try {
             if (!clientCryptoSpec.verifyIntegrity(dataToVerify, integrityProof)) {
                 LOGGER.severe("Failed integrity proof");
-                return;
+                return State.ERROR;
             }
 
             byte[] decryptedData = clientCryptoSpec.asymmetricDecrypt(publicKeyEncryptedData);
@@ -162,7 +145,7 @@ public class ShpClient extends AbstractShpPeer {
 
             if (!(new String (response)).equals(ShpCryptoSpec.REQUEST_CONFIRMATION)) {
                 LOGGER.severe("Server denied request");
-                return;
+                return State.ERROR;
             }
 
             byte[] firstNonce = decryptedDataParts[1];
@@ -170,7 +153,7 @@ public class ShpClient extends AbstractShpPeer {
 
             if (!(noncesReceived.add(firstNonce) && noncesReceived.add(secondNonce))) {
                 LOGGER.severe("Invalid nonces received");
-                return;
+                return State.ERROR;
             }
 
             byte[] cipherSuiteBytes = decryptedDataParts[3];
@@ -185,7 +168,7 @@ public class ShpClient extends AbstractShpPeer {
 
             if (!clientCryptoSpec.verify(serverPublicKey, signatureMessage, digitalSignature)) {
                 LOGGER.severe("Invalid digital signature");
-                return;
+                return State.ERROR;
             }
 
             byte[] sharedKey = clientCryptoSpec.generateSharedKey(publicServerDiffieHellmanNumber);
@@ -196,18 +179,20 @@ public class ShpClient extends AbstractShpPeer {
             byte[] encryptedMessage = clientCryptoSpec.sharedKeyEncrypt(message, sharedKey);
             byte[] messageHmac = clientCryptoSpec.createIntegrityProof(encryptedMessage);
 
-            output.write(Utils.concat(encryptedMessage, messageHmac));
+            byte[] header = getMessageHeader(MsgType.TYPE_5);
+            output.writeObject(createShpMessage(header, encryptedMessage, messageHmac));
 
             //byte[] ciphersuite = Utils.toString(ciphersuiteBytes, ciphersuiteBytes.length);
             //TODO: Create ciphersuite from bytes
 
-            byte[] header = getMessageHeader(MsgType.TYPE_5);
-
             socket.close();
+
+            return State.FINISHED;
         } catch (IOException e) {
             LOGGER.severe("Error closing socket");
+            return State.ERROR;
         } catch (GeneralSecurityException e) {
-            throw new RuntimeException(e);
+            return State.ERROR;
         }
     }
 

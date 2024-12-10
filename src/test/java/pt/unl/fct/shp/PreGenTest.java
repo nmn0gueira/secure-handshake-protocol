@@ -30,8 +30,8 @@ public class PreGenTest {
     }
 
     @Test
-    public void testSalt() {
-        byte[] salt = ShpCryptoSpec.generateShpSalt();
-        System.out.println("Salt: " + Utils.toHex(salt));
+    public void testNonce() {
+        byte[] nonce = ShpCryptoSpec.generateShpNonce();
+        System.out.println("Nonce: " + Utils.toHex(nonce));
     }
 }

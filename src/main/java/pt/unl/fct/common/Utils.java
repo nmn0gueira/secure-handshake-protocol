@@ -30,7 +30,7 @@ public class Utils
     }
 
     /**
-     * Return data in byte array from string hexadecimal
+     * Return string hexadecimal from data in byte array from
      *
      * @param data : bytes to be converted
      * @return : hexadecimal representation of data
@@ -129,11 +129,13 @@ public class Utils
 
     /**
      * Transform a number of x bytes into y bytes (ex: 2 bytes into 4 bytes or 4 bytes into 2 bytes)
+     * If the number of bytes is smaller than y, the result will be padded with 0s
+     * If the number of bytes is bigger than y, the result will be the last y bytes of the original number
      * @param data
      * @param x
      * @return
      */
-    public static byte[] toXBytes(byte[] data, int x) {
+    public static byte[] fitToSize(byte[] data, int x) {
         if (x > data.length) {
             byte[] result = new byte[x];
             System.arraycopy(data, 0, result, x - data.length, data.length);
@@ -145,6 +147,13 @@ public class Utils
         else {
             return subArray(data, data.length - x, data.length);
         }
+    }
+
+    public static byte[] getFirstBytes(byte[] data, int x) {
+        if (x > data.length) {
+            throw new IllegalArgumentException("The number of bytes requested is bigger than the size of the array");
+        }
+        return subArray(data, 0, x);
     }
 
     public static byte[] getIncrementedBytes(byte[] bytes) {

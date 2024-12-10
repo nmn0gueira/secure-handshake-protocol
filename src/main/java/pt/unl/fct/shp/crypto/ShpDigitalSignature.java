@@ -36,9 +36,4 @@ public class ShpDigitalSignature implements DigitalSignature {
         ECDSA_VERIFIER.update(data);
         return ECDSA_VERIFIER.verify(signature);
     }
-
-    @Override
-    public int getSignatureLength() {
-        return ECDSA_SIGNATURE.getAlgorithm().length();
-    }
 }

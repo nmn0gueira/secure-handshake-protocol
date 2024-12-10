@@ -1,11 +1,10 @@
 package pt.unl.fct.shp;
 
-import pt.unl.fct.common.Utils;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -21,23 +20,25 @@ public abstract class AbstractShpPeer {
         TYPE_2,
         TYPE_3,
         TYPE_4,
-        TYPE_5;
+        TYPE_5
     }
 
     protected enum State {
-        CLOSED,
         ONGOING,
         WAITING,
-        FINISHED;
+        ERROR,
+        FINISHED
     }
 
-    protected OutputStream output;
-    protected InputStream input;
     protected static final int PORT = 7777;
     protected static final byte[] UDP_PORT_BYTES = ByteBuffer.allocate(Integer.BYTES).putInt(PORT).array();
     protected static final int TIMEOUT_MS = 10000;
     private static final short SHP_VERSION = 0x01;
     private static final byte SHP_RELEASE = 0x01;
+
+    protected ObjectOutputStream output;
+    protected ObjectInputStream input;
+    private final BlockingQueue<Object> objectQueue = new LinkedBlockingQueue<>();
 
     protected final Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
@@ -59,57 +60,46 @@ public abstract class AbstractShpPeer {
         return new byte[]{SHP_HEADER[0], (byte) type.ordinal()};
     }
 
-    /**
-     * Extract header and payload from the provided message.
-     */
-    private byte[][] extractHeaderAndPayload(byte[] message) {
-        if (message.length < 2) {   // Should not happen
-            LOGGER.severe("Message is too short to contain a header");
-            throw new IllegalArgumentException();
-        }
-        byte[] header = Utils.subArray(message, 0, 2);
-        byte[] payload = Utils.subArray(message, 2, message.length);
-        return new byte[][]{header, payload};
-    }
-
     // Method to handle reading and processing messages
     private State processMessage() throws IOException {
-        byte[] response = new byte[4096];
+        try {
+            Object receivedObject = objectQueue.poll(); // Non-blocking, returns null if empty
 
-        int bytesRead = input.read(response, 0, input.available());
+            if (receivedObject == null) {
+                return State.WAITING; // No object available, wait for next call
+            }
 
-        if (bytesRead == -1) {
-            LOGGER.warning("Connection closed.");
-            return State.CLOSED;
+            if (receivedObject instanceof ShpMessage message) {
+                MsgType msgType = getMessageType(message.getHeader());
+                return handleMessage(msgType, message.getPayload());
+            } else {
+                LOGGER.warning("Unexpected object type: " + receivedObject.getClass());
+                return State.ERROR;
+            }
+        } catch (Exception e) {
+            LOGGER.severe("Error processing message: " + e.getMessage());
+            return State.ERROR;
         }
-        if (bytesRead == 0) {
-            return State.WAITING;  // Connection alive, continue listening for messages
-        }
 
-        byte[] actualData = Utils.subArray(response, 0, bytesRead);
-        byte[][] message = extractHeaderAndPayload(actualData);
-        MsgType msgType = getMessageType(message[0]);
-
-        return handleMessage(msgType, message[1]);
     }
 
     protected MsgType getMessageType(byte[] header) {
         return MsgType.values()[header[1]];
     }
 
+    protected abstract State handleMessage(MsgType msgType, List<byte[]> payload);
 
-    protected abstract State handleMessage(MsgType msgType, byte[] bytes);
-
-
+    @SuppressWarnings("all")
     protected void runProtocol() {
+        startObjectReader(input);
         long timeout = System.currentTimeMillis() + TIMEOUT_MS;
-
+        boolean timeoutCondition = false;
         // Main loop for processing messages
-        while (!isConnectionClosed() && System.currentTimeMillis() < timeout) {
+        while (!isConnectionClosed() && (timeoutCondition = System.currentTimeMillis() < timeout)) {
             try {
                 switch (processMessage()) {
-                    case CLOSED -> {
-                        LOGGER.warning("Connection closed.");
+                    case ERROR -> {
+                        LOGGER.warning("Error during protocol execution.");
                         return;
                     }
                     case FINISHED -> {
@@ -128,10 +118,37 @@ public abstract class AbstractShpPeer {
                 throw new RuntimeException(e);
             }
         }
+        if (!timeoutCondition) {
+            LOGGER.warning("Timeout reached.");
+        }
+    }
+
+    private void startObjectReader(ObjectInputStream objectInputStream) {
+        Thread readerThread = new Thread(() -> {
+            try {
+                while (true) {
+                    Object receivedObject = objectInputStream.readObject();
+                    objectQueue.put(receivedObject);
+                }
+            } catch (EOFException e) {
+                LOGGER.info("End of stream reached, stopping reader thread.");
+            } catch (Exception e) {
+                LOGGER.severe("Error in reader thread: " + e.getMessage());
+            }
+        });
+        readerThread.setDaemon(true);
+        readerThread.start();
     }
 
     // Check if the socket is closed (client or server)
     protected abstract boolean isConnectionClosed();
 
     protected abstract void loadResources();
+
+    protected ShpMessage createShpMessage(byte[] header, byte[]... components) {
+        for (byte[] component : components) {
+            System.out.println("Component: " + component.length);
+        }
+        return new ShpMessage(header, components);
+    }
 }

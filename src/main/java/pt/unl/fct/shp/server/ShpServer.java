@@ -10,6 +10,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.*;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
@@ -25,7 +26,8 @@ public class ShpServer extends AbstractShpPeer {
 
 
     /**
-     * Creates a new SHP server. TODO: If needed add a parameter for a set that the client request has to be in.
+     * Creates a new SHP server.
+     *
      * @throws IOException - if an I/O error occurs when creating the ServerSocket.
      */
     public ShpServer(Set<String> validRequests) throws IOException {
@@ -80,118 +82,120 @@ public class ShpServer extends AbstractShpPeer {
 
     private void acceptClientConnection() throws IOException {
         clientSocket = serverSocket.accept();
-        input = clientSocket.getInputStream();
-        output = clientSocket.getOutputStream();
+        input = new ObjectInputStream(clientSocket.getInputStream());
+        output = new ObjectOutputStream(clientSocket.getOutputStream());
         LOGGER.info("Client connected.");
     }
 
     @Override
-    protected State handleMessage(MsgType msgType, byte[] bytes) {
+    protected State handleMessage(MsgType msgType, List<byte[]> payload) {
         switch (msgType) {
             case TYPE_1 -> {
-                handleType1Message(bytes);
-                return State.ONGOING;
+                return handleType1Message(payload);
             }
             case TYPE_3 -> {
-                handleType3Message(bytes);
-                return State.ONGOING;
+                return handleType3Message(payload);
             }
             case TYPE_5 -> {
-                handleType5Message(bytes);
-                return State.FINISHED;
+                return handleType5Message(payload);
             }
             default -> {
                 LOGGER.severe("Unexpected message type: " + msgType);
-                throw new IllegalStateException();
+                return State.ERROR;
             }
         }
     }
 
-    private void handleType1Message(byte[] bytes) {
+    private State handleType1Message(List<byte[]> payload) {
         LOGGER.info("Received message type 1.");
 
-        String userId = new String(bytes);
+        String userId = new String(payload.getFirst());
         User user = userDatabase.get(userId);
         if (user == null) {
             LOGGER.warning("User not found.");
-            return;
+            return State.ERROR;
         }
 
         serverCryptoSpec.initIntegrityCheck(user.passwordHash());
 
-        //byte[] salt = ShpCryptoSpec.generateShpSalt();
-        byte[] salt = user.salt();
+        byte[] salt = ShpCryptoSpec.generateShpNonce();
         byte[] iterationBytes = ShpCryptoSpec.generateShpIterationBytes();
         byte[] nonce = ShpCryptoSpec.generateShpNonce();
 
         byte[] header = getMessageHeader(MsgType.TYPE_2);
-        byte[] message = Utils.concat(header, salt, iterationBytes, nonce);
 
         try {
-            System.out.println(message.length);
-            output.write(message);
+            output.writeObject(createShpMessage(header, salt, iterationBytes, nonce));
             LOGGER.info("Sent TYPE_2 response.");
+            return State.ONGOING;
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Error sending message TYPE_2.", e);
+            return State.ERROR;
         }
     }
 
-    private void handleType3Message(byte[] bytes) {
+    private State handleType3Message(List<byte[]> payload) {
         LOGGER.info("Received message type 3.");
         try {
-            try {
 
-                int encryptedDataLength = bytes.length
-                        - serverCryptoSpec.getPublicDiffieHellmanKeyLength()
-                        - serverCryptoSpec.getDigitalSignatureLength()
-                        - serverCryptoSpec.getIntegrityProofSize();
+            /*
+            int encryptedDataLength = bytes.length
+                    - serverCryptoSpec.getPublicDiffieHellmanKeyLength()
+                    - serverCryptoSpec.getDigitalSignatureLength()
+                    - serverCryptoSpec.getIntegrityProofSize();
 
-                byte[][] messageParts = Utils.divideInParts(bytes,
-                        0,
-                        encryptedDataLength,
-                        encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength(),
-                        encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength() + serverCryptoSpec.getDigitalSignatureLength(),
-                        bytes.length - serverCryptoSpec.getIntegrityProofSize(),
-                        bytes.length);
+            byte[][] messageParts = Utils.divideInParts(payload,
+                    0,
+                    encryptedDataLength,
+                    encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength(),
+                    encryptedDataLength + serverCryptoSpec.getPublicDiffieHellmanKeyLength() + serverCryptoSpec.getDigitalSignatureLength(),
+                    payload.length - serverCryptoSpec.getIntegrityProofSize(),
+                    payload.length);
 
-                byte[] encryptedData = messageParts[0];
-                byte[] clientPublicKeyBytes = messageParts[1];
-                byte[] clientSignature = messageParts[2];
-                byte[] hmac = messageParts[3];
-
-
-                byte[] dataToVerifyHmac = Utils.subArray(bytes, 0, bytes.length - serverCryptoSpec.getIntegrityProofSize());
-                if (!serverCryptoSpec.verifyIntegrity(dataToVerifyHmac, hmac)) {
-                    LOGGER.severe("Failed HMAC verification.");
-                    return;
-                }
+            byte[] encryptedData = messageParts[0];
+            byte[] clientPublicKeyBytes = messageParts[1];
+            byte[] clientSignature = messageParts[2];
+            byte[] hmac = messageParts[3];
 
 
-                PublicKey clientPublicKey = CryptoUtils.loadECPublicKey(clientPublicKeyBytes);
-                byte[] signatureData = Utils.concat(encryptedData, clientPublicKeyBytes);
-                if (!serverCryptoSpec.verify(clientPublicKey, signatureData, clientSignature)) {
-                    LOGGER.severe("Invalid client digital signature.");
-                    return;
-                }
+            byte[] dataToVerifyHmac = Utils.subArray(payload, 0, payload.length - serverCryptoSpec.getIntegrityProofSize());
+            if (!serverCryptoSpec.verifyIntegrity(dataToVerifyHmac, hmac)) {
+                LOGGER.severe("Failed HMAC verification.");
+                return;
+            }
 
 
-                byte[] decryptedData = serverCryptoSpec.passwordBasedDecrypt(encryptedData);
+            PublicKey clientPublicKey = CryptoUtils.loadECPublicKey(clientPublicKeyBytes);
+            byte[] signatureData = Utils.concat(encryptedData, clientPublicKeyBytes);
+            if (!serverCryptoSpec.verify(clientPublicKey, signatureData, clientSignature)) {
+                LOGGER.severe("Invalid client digital signature.");
+                return;
+            }
+
+
+            byte[] decryptedData = serverCryptoSpec.passwordBasedDecrypt(encryptedData);
 
             byte[] header = getMessageHeader(MsgType.TYPE_4);
+            */
+
             System.out.println("Chegou aqui");
+            return State.ONGOING;
 
-        } catch (Exception e) {
+        } catch (Exception e) { // TODO: Specialize this exception
             LOGGER.log(Level.SEVERE, "Error processing TYPE_3 message.", e);
+            return State.ERROR;
         }
+    }
 
-
-    private void handleType5Message(byte[] bytes) {
+    private State handleType5Message(List<byte[]> payload){
         LOGGER.info("Received message type 5.");
         try {
 
+            return State.FINISHED;
 
-        } catch (Exception e) {
+        } catch (Exception e) { // TODO: Specialize this exception
             LOGGER.log(Level.SEVERE, "Error processing TYPE_5 message.", e);
+            return State.ERROR;
         }
     }
 

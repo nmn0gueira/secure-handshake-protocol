@@ -57,7 +57,7 @@ public class DstpIntegrityCheck implements IntegrityCheck {
                     return mac.doFinal(data);
                 }
                 case AESGMAC, RC6GMAC, AESGMACFAST, RC6GMACFAST -> {
-                    mac.init(hMacKey, new IvParameterSpec(Utils.toXBytes(nonce, 12)));
+                    mac.init(hMacKey, new IvParameterSpec(Utils.fitToSize(nonce, 12)));
                     return mac.doFinal(data);
                 }
                 default -> {

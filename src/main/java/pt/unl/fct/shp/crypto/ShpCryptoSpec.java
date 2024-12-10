@@ -1,5 +1,6 @@
 package pt.unl.fct.shp.crypto;
 
+import pt.unl.fct.common.Utils;
 import pt.unl.fct.common.crypto.*;
 
 import javax.crypto.*;
@@ -31,7 +32,7 @@ public class ShpCryptoSpec {
 
     public static final int SALT_SIZE = 8;
     public static final int ITERATION_COUNTER_SIZE = 2;
-    public static final int NONCE_SIZE = 8;
+    public static final int NONCE_SIZE = 16;
     public static final String REQUEST_CONFIRMATION = "OK";
     public static final String FINISH_PROTOCOL = "GO";
 
@@ -141,19 +142,22 @@ public class ShpCryptoSpec {
         return integrityCheck.verifyIntegrity(data, null, integrityProof);
     }
 
-    public static byte[] generateShpSalt() {
-        byte[] salt = new byte[ShpCryptoSpec.SALT_SIZE];
-        CryptoUtils.SECURE_RANDOM.nextBytes(salt);
-        return salt;
-    }
-
+    /**
+     * Generates a nonce with the first 2 bytes being the iteration counter randomly chosen between MIN_ITERATIONS and MAX_ITERATIONS
+     * and the remaining bytes being completely random.
+     * @return The generated nonce as a byte array
+     */
     public static byte[] generateShpIterationBytes() {
         int iterations = MIN_ITERATIONS + CryptoUtils.SECURE_RANDOM.nextInt(MAX_ITERATIONS - MIN_ITERATIONS);
         // Convert to a 2-byte array
         byte[] iterationBytes = new byte[ITERATION_COUNTER_SIZE];
         iterationBytes[0] = (byte) (iterations >> 8); // High byte
         iterationBytes[1] = (byte) (iterations);
-        return iterationBytes;
+
+        byte[] nonce = new byte[ShpCryptoSpec.NONCE_SIZE - ShpCryptoSpec.ITERATION_COUNTER_SIZE];
+        CryptoUtils.SECURE_RANDOM.nextBytes(nonce);
+
+        return Utils.concat(iterationBytes, nonce);
     }
 
     public static byte[] generateShpNonce() {
@@ -170,10 +174,6 @@ public class ShpCryptoSpec {
      */
     public static byte[] digest(byte[] data) {
         return SHA256.digest(data);
-    }
-
-    public int getDigitalSignatureLength() {
-        return digitalSignature.getSignatureLength();
     }
 
     public byte[] getPublicDiffieHellmanKeyBytes() {
@@ -251,8 +251,8 @@ public class ShpCryptoSpec {
         return sharedKeyCipher.decrypt(encryptedData);
     }
 
-    public static byte[] asymmetricEncrypt(byte[] data, PublicKey publicKey) throws GeneralSecurityException {
-        return (new ShpAsymmetricCipher()).encrypt(data, publicKey);
+    public byte[] asymmetricEncrypt(byte[] data, PublicKey publicKey) throws GeneralSecurityException {
+        return asymmetricCipher.encrypt(data, publicKey);
 
     }
     public byte[] asymmetricDecrypt(byte[] encryptedData) throws GeneralSecurityException{
