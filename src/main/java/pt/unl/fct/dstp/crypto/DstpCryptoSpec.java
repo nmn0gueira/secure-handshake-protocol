@@ -1,5 +1,6 @@
 package pt.unl.fct.dstp.crypto;
 
+import pt.unl.fct.common.crypto.AbstractCryptoSpec;
 import pt.unl.fct.common.crypto.IntegrityCheck;
 import pt.unl.fct.common.crypto.SymmetricCipher;
 
@@ -22,12 +23,12 @@ enum CryptoConfig {
     MAC,
     MAC_KEY,
     MAC_KEY_SIZE,
-    H;
+    H
 }
 
 
 
-public class DstpCryptoSpec {
+public class DstpCryptoSpec extends AbstractCryptoSpec {
 
     // Configuration
     private final Map<CryptoConfig, String> symmetricConfig = new HashMap<>();
@@ -37,12 +38,18 @@ public class DstpCryptoSpec {
 
     private static final Logger LOGGER = Logger.getLogger(DstpCryptoSpec.class.getName());
 
+    // Agreed upon crypto configuration
     public DstpCryptoSpec(String cryptoConfigFile) {
-        loadCryptoConfig(cryptoConfigFile);
+        loadCryptoConfigFromFile(cryptoConfigFile);
         finalizeInitialization();
     }
 
-    private void loadCryptoConfig(String cryptoConfigFile) {
+    // Crypto configuration obtained through a secure channel
+    public DstpCryptoSpec(String cryptoConfig, byte[] secret) {
+
+    }
+
+    private void loadCryptoConfigFromFile(String cryptoConfigFile) {
         try {
             BufferedReader reader = new BufferedReader(new FileReader(cryptoConfigFile));
             String line;
@@ -67,12 +74,8 @@ public class DstpCryptoSpec {
         }
         CryptoConfig config = CryptoConfig.valueOf(key);
         switch (config) {
-            case CONFIDENTIALITY, SYMMETRIC_KEY, SYMMETRIC_KEY_SIZE, IV, IV_SIZE -> {
-                symmetricConfig.put(config, value);
-            }
-            case INTEGRITY, H, MAC, MAC_KEY, MAC_KEY_SIZE -> {
-                integrityConfig.put(config, value);
-            }
+            case CONFIDENTIALITY, SYMMETRIC_KEY, SYMMETRIC_KEY_SIZE, IV, IV_SIZE -> symmetricConfig.put(config, value);
+            case INTEGRITY, H, MAC, MAC_KEY, MAC_KEY_SIZE -> integrityConfig.put(config, value);
             default -> {
                 LOGGER.severe("Invalid crypto configuration. " + key + " is not be part of a valid configuration.");
                 throw new IllegalArgumentException();
@@ -87,7 +90,7 @@ public class DstpCryptoSpec {
             String key = symmetricConfig.get(CryptoConfig.SYMMETRIC_KEY);
             String iv = symmetricConfig.get(CryptoConfig.IV);
             try {
-                symmetricCipher = new DstpSymmetricCipher(cipher, key, iv);
+                symmetricCipher = new DstpSymmetricCipher(cipher, key, iv, secureRandom);
             } catch (NoSuchPaddingException | NoSuchAlgorithmException e) {
                 LOGGER.severe("Error initializing symmetric cipher: " + e.getMessage());
                 throw new RuntimeException(e);

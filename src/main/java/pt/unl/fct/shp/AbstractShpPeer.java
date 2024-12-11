@@ -1,6 +1,7 @@
 package pt.unl.fct.shp;
 
 import java.io.*;
+import java.security.Security;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -30,15 +31,14 @@ public abstract class AbstractShpPeer {
         FINISHED
     }
 
-    protected static final int TCP_PORT = 7777;
     protected static final int TIMEOUT_MS = 10000;
     private static final short SHP_VERSION = 0x01;
     private static final byte SHP_RELEASE = 0x01;
 
     protected ObjectOutputStream output;
     protected ObjectInputStream input;
-    protected final HashSet<byte[]> noncesReceived = new HashSet<>();
-    private final BlockingQueue<Object> objectQueue = new LinkedBlockingQueue<>();
+    protected final HashSet<byte[]> noncesReceived;
+    private final BlockingQueue<Object> objectQueue;
 
     protected final Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
@@ -49,6 +49,9 @@ public abstract class AbstractShpPeer {
     };
 
     protected AbstractShpPeer() {
+        noncesReceived = new HashSet<>();
+        objectQueue = new LinkedBlockingQueue<>();
+        loadResources();
     }
 
     /**
@@ -148,15 +151,21 @@ public abstract class AbstractShpPeer {
         readerThread.start();
     }
 
-    // Check if the socket is closed (client or server)
+
     protected abstract boolean isConnectionClosed();
+
+    protected void closeStreams() throws IOException {
+        if (output != null) {
+            output.close();
+        }
+        if (input != null) {
+            input.close();
+        }
+    }
 
     protected abstract void loadResources();
 
     protected ShpMessage createShpMessage(byte[] header, byte[]... components) {
-        /*for (byte[] component : components) {
-            System.out.println("Component: " + component.length);
-        }*/
         return new ShpMessage(header, components);
     }
 }

@@ -10,7 +10,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.logging.Logger;
 
 
-public class ShpCryptoSpec {
+public class ShpCryptoSpec extends AbstractCryptoSpec{
 
     private static final MessageDigest SHA256;
     private static final Logger LOGGER = Logger.getLogger(ShpCryptoSpec.class.getName());
@@ -48,23 +48,31 @@ public class ShpCryptoSpec {
     private SymmetricCipher pbeCipher;
     private SymmetricCipher sharedKeyCipher;
     private IntegrityCheck integrityCheck;
-    private final AsymmetricCipher asymmetricCipher;
-    private final DigitalSignature digitalSignature;
-    private final CustomKeyAgreement keyAgreement;
+    private AsymmetricCipher asymmetricCipher;
+    private DigitalSignature digitalSignature;
+    private CustomKeyAgreement keyAgreement;
 
     private final KeyPair peerKeyPair;
 
 
     public ShpCryptoSpec(String keyPairPath) {
-        this.asymmetricCipher = new ShpAsymmetricCipher();
-        this.digitalSignature = new ShpDigitalSignature();
-        this.keyAgreement = new ShpKeyAgreement();
+        this.reset();
         try {
-            this.peerKeyPair = CryptoUtils.loadKeyPairFromFile(keyPairPath, ECDSA_KEY_FACTORY);
+            this.peerKeyPair = KeyLoader.loadKeyPairFromFile(keyPairPath, ECDSA_KEY_FACTORY);
         } catch (IOException e) {
             LOGGER.severe("Error loading key pair from file.");
             throw new RuntimeException(e);
         }
+    }
+
+    public void reset() {
+        this.asymmetricCipher = new ShpAsymmetricCipher();
+        this.digitalSignature = new ShpDigitalSignature();
+        this.keyAgreement = new ShpKeyAgreement();
+
+        this.pbeCipher = null;
+        this.sharedKeyCipher = null;
+        this.integrityCheck = null;
     }
 
     public void initPbeCipher(String password, byte[] salt, int iterationCount) {
@@ -91,7 +99,7 @@ public class ShpCryptoSpec {
      * @throws GeneralSecurityException In case of crypto error
      */
     public byte[] generateSharedKey(byte[] publicKey) throws GeneralSecurityException {
-        PublicKey publicKeyObj = CryptoUtils.loadPublicKey(publicKey, DIFFIE_HELLMAN_KEY_FACTORY);
+        PublicKey publicKeyObj = KeyLoader.loadPublicKey(publicKey, DIFFIE_HELLMAN_KEY_FACTORY);
         keyAgreement.doPhase(publicKeyObj);
         return digest(keyAgreement.generateSecret());
     }
@@ -153,22 +161,22 @@ public class ShpCryptoSpec {
      * and the remaining bytes being completely random.
      * @return The generated nonce as a byte array
      */
-    public static byte[] generateShpIterationBytes() {
-        int iterations = MIN_ITERATIONS + CryptoUtils.SECURE_RANDOM.nextInt(MAX_ITERATIONS - MIN_ITERATIONS);
+    public byte[] generateShpIterationBytes() {
+        int iterations = MIN_ITERATIONS + secureRandom.nextInt(MAX_ITERATIONS - MIN_ITERATIONS);
         // Convert to a 2-byte array
         byte[] iterationBytes = new byte[ITERATION_COUNTER_SIZE];
         iterationBytes[0] = (byte) (iterations >> 8); // High byte
         iterationBytes[1] = (byte) (iterations);
 
         byte[] nonce = new byte[ShpCryptoSpec.NONCE_SIZE - ShpCryptoSpec.ITERATION_COUNTER_SIZE];
-        CryptoUtils.SECURE_RANDOM.nextBytes(nonce);
+        secureRandom.nextBytes(nonce);
 
         return Utils.concat(iterationBytes, nonce);
     }
 
-    public static byte[] generateShpNonce() {
+    public byte[] generateShpNonce() {
         byte[] nonce = new byte[ShpCryptoSpec.NONCE_SIZE];
-        CryptoUtils.SECURE_RANDOM.nextBytes(nonce);
+        secureRandom.nextBytes(nonce);
         return nonce;
     }
 
@@ -254,10 +262,10 @@ public class ShpCryptoSpec {
     }
 
     public static PublicKey loadPublicKeyFromFile(String filePath) throws IOException {
-        return CryptoUtils.loadPublicKeyFromFile(filePath, ECDSA_KEY_FACTORY);
+        return KeyLoader.loadPublicKeyFromFile(filePath, ECDSA_KEY_FACTORY);
     }
 
     public static PublicKey loadPublicKey(byte[] publicKeyBytes) {
-        return CryptoUtils.loadPublicKey(publicKeyBytes, ECDSA_KEY_FACTORY);
+        return KeyLoader.loadPublicKey(publicKeyBytes, ECDSA_KEY_FACTORY);
     }
 }

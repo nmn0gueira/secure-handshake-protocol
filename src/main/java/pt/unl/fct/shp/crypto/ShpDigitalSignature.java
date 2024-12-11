@@ -1,6 +1,5 @@
 package pt.unl.fct.shp.crypto;
 
-import pt.unl.fct.common.crypto.CryptoUtils;
 import pt.unl.fct.common.crypto.DigitalSignature;
 
 import java.security.*;
@@ -19,7 +18,7 @@ public class ShpDigitalSignature implements DigitalSignature {
 
     @Override
     public byte[] sign(PrivateKey privateKey, byte[] data) throws InvalidKeyException, SignatureException {
-        ecdsaSignature.initSign(privateKey, CryptoUtils.SECURE_RANDOM);
+        ecdsaSignature.initSign(privateKey);
         ecdsaSignature.update(data);
         return ecdsaSignature.sign();
     }

@@ -3,9 +3,8 @@ package pt.unl.fct.shp;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.Test;
 import pt.unl.fct.common.Utils;
-import pt.unl.fct.common.crypto.CryptoUtils;
+import pt.unl.fct.common.crypto.KeyLoader;
 import pt.unl.fct.shp.crypto.ShpCryptoSpec;
-import pt.unl.fct.shp.crypto.ShpDigitalSignature;
 import pt.unl.fct.shp.crypto.ShpKeyAgreement;
 
 import javax.crypto.KeyAgreement;
@@ -24,7 +23,7 @@ public class RandomTest {
 
         try {
             ECDSA_KEY_PAIR_GENERATOR = KeyPairGenerator.getInstance("ECDSA", "BC");
-            ECDSA_KEY_PAIR_GENERATOR.initialize(EC_GEN_PARAMETER_SPEC, CryptoUtils.SECURE_RANDOM);
+            ECDSA_KEY_PAIR_GENERATOR.initialize(EC_GEN_PARAMETER_SPEC, new SecureRandom());
             DIFFIE_HELLMAN_KEY_FACTORY = KeyFactory.getInstance("DH", "BC");
         } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidAlgorithmParameterException e) {
             throw new RuntimeException(e);
@@ -45,12 +44,6 @@ public class RandomTest {
         String password = "password";
         byte[] passwordHash = ShpCryptoSpec.digest(password.getBytes());
         System.out.println("Password: " + Utils.byteArrayToHexString(passwordHash));
-    }
-
-    @Test
-    public void testNonce() {
-        byte[] nonce = ShpCryptoSpec.generateShpNonce();
-        System.out.println("Nonce: " + Utils.byteArrayToHexString(nonce));
     }
 
     @Test
@@ -89,10 +82,10 @@ public class RandomTest {
         byte[] privateKeyA = Utils.hexStringToByteArray("3081dd02010030819306092a864886f70d0103013081850241009494fec095f3b85ee286542b3836fc81a5dd0a0349b4c239dd38744d488cf8e31db8bcb7d33b41abb9e5a33cca9144b1cef332c94bf0573bf047a3aca98cdf3b0240153d5d6172adb43045b68ae8e1de1070b6137005686d29d3d73a7749199681ee5b212c9b96bfdcfa5b20cd5e3fd2044895d609cf9b410b7a0f12ca1cb9a428cc04420240391a32517488c3b3cc7939fb68b43a5e6635b8420646d8a2575ed28b53abbefd4c453eae0597583f2e152b24d2d4224342ae5c2cdaa79b1bd951c3750b1b698f");
         byte[] publicKeyB = Utils.hexStringToByteArray("3081db30819306092a864886f70d0103013081850241009494fec095f3b85ee286542b3836fc81a5dd0a0349b4c239dd38744d488cf8e31db8bcb7d33b41abb9e5a33cca9144b1cef332c94bf0573bf047a3aca98cdf3b0240153d5d6172adb43045b68ae8e1de1070b6137005686d29d3d73a7749199681ee5b212c9b96bfdcfa5b20cd5e3fd2044895d609cf9b410b7a0f12ca1cb9a428cc034300024015eea93b279bd725e92031c61a33a4ec4a810bc7904d866e17fb81cb5729aa24b2c7b930ea9af1a4062c403f512d7e999d50339be3ce360177599d07952c54aa");
         byte[] privateKeyB = Utils.hexStringToByteArray("3081dd02010030819306092a864886f70d0103013081850241009494fec095f3b85ee286542b3836fc81a5dd0a0349b4c239dd38744d488cf8e31db8bcb7d33b41abb9e5a33cca9144b1cef332c94bf0573bf047a3aca98cdf3b0240153d5d6172adb43045b68ae8e1de1070b6137005686d29d3d73a7749199681ee5b212c9b96bfdcfa5b20cd5e3fd2044895d609cf9b410b7a0f12ca1cb9a428cc044202403c364228b2423791e8fa2118e9eaabb74a93ec75c86e1a1a55e1e8d2aba125765dc766da76d79575724bf7233c822efd04faca8b60b237833d38434385265afd");
-        PublicKey publicKeyAKey = CryptoUtils.loadPublicKey(publicKeyA, DIFFIE_HELLMAN_KEY_FACTORY);
-        PrivateKey privateKeyAKey = CryptoUtils.loadPrivateKey(privateKeyA, DIFFIE_HELLMAN_KEY_FACTORY);
-        PublicKey publicKeyBKey = CryptoUtils.loadPublicKey(publicKeyB, DIFFIE_HELLMAN_KEY_FACTORY);
-        PrivateKey privateKeyBKey = CryptoUtils.loadPrivateKey(privateKeyB, DIFFIE_HELLMAN_KEY_FACTORY);
+        PublicKey publicKeyAKey = KeyLoader.loadPublicKey(publicKeyA, DIFFIE_HELLMAN_KEY_FACTORY);
+        PrivateKey privateKeyAKey = KeyLoader.loadPrivateKey(privateKeyA, DIFFIE_HELLMAN_KEY_FACTORY);
+        PublicKey publicKeyBKey = KeyLoader.loadPublicKey(publicKeyB, DIFFIE_HELLMAN_KEY_FACTORY);
+        PrivateKey privateKeyBKey = KeyLoader.loadPrivateKey(privateKeyB, DIFFIE_HELLMAN_KEY_FACTORY);
         System.out.println("Public key A: " + Utils.byteArrayToHexString(publicKeyAKey.getEncoded()));
         System.out.println("Private key A: " + Utils.byteArrayToHexString(privateKeyAKey.getEncoded()));
         System.out.println("Public key B: " + Utils.byteArrayToHexString(publicKeyBKey.getEncoded()));
@@ -122,14 +115,14 @@ public class RandomTest {
         byte[] publicKeyBBytes = bob.getPublicKey().getEncoded();
 
         try {
-            alice.doPhase(CryptoUtils.loadPublicKey(publicKeyBBytes, DIFFIE_HELLMAN_KEY_FACTORY));
-            bob.doPhase(CryptoUtils.loadPublicKey(publicKeyABytes, DIFFIE_HELLMAN_KEY_FACTORY));
+            alice.doPhase(KeyLoader.loadPublicKey(publicKeyBBytes, DIFFIE_HELLMAN_KEY_FACTORY));
+            bob.doPhase(KeyLoader.loadPublicKey(publicKeyABytes, DIFFIE_HELLMAN_KEY_FACTORY));
             byte[] aliceShared = alice.generateSecret();
             byte[] bobShared = bob.generateSecret();
             System.out.println("Alice: I generated\n" + Utils.byteArrayToHexString(aliceShared));
             System.out.println("Bob: I generated\n" + Utils.byteArrayToHexString(bobShared));
         } catch (InvalidKeyException e) {
-            e.printStackTrace();
+            System.out.println("Invalid key");
         }
     }
     /*

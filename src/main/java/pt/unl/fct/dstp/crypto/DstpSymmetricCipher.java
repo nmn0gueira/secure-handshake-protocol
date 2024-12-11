@@ -45,14 +45,16 @@ public class DstpSymmetricCipher implements SymmetricCipher {
     private final SecretKey key;
     private IvParameterSpec staticIvSpec; // For certain ciphers
     private CipherMode cipherMode;
+    private final SecureRandom secureRandom;
 
-    public DstpSymmetricCipher(String cipher, String key, String iv) throws NoSuchPaddingException, NoSuchAlgorithmException {
+    public DstpSymmetricCipher(String cipher, String key, String iv, SecureRandom secureRandom) throws NoSuchPaddingException, NoSuchAlgorithmException {
         this.cipher = Cipher.getInstance(cipher);
         setCipherMode(cipher);
         this.key = new SecretKeySpec(Utils.hexStringToByteArray(key), getAlgorithm());
         if (iv != null) {
             staticIvSpec = new IvParameterSpec(Utils.hexStringToByteArray(iv));
         }
+        this.secureRandom = secureRandom;
 
     }
 
@@ -86,7 +88,7 @@ public class DstpSymmetricCipher implements SymmetricCipher {
             // All these modes require a nonce but use different specs
             case GCM, CHACHA20_POLY1305, CHACHA20 -> {
                 byte[] nonce = new byte[12];
-                SecureRandom.getInstance("SHA1PRNG").nextBytes(nonce);
+                secureRandom.nextBytes(nonce);
                 if (cipherMode == CipherMode.GCM) {
                     cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, nonce));
                 } else if (cipherMode == CipherMode.CHACHA20_POLY1305) {

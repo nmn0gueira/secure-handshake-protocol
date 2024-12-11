@@ -7,6 +7,7 @@ import pt.unl.fct.shp.AbstractShpPeer;
 import java.io.*;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.util.List;
 import java.util.logging.Level;
@@ -14,47 +15,83 @@ import java.util.logging.Level;
 
 public class ShpClient extends AbstractShpPeer {
 
+    // Client resources
     private static final String CLIENT_ECC_KEYPAIR_PATH = "client/ClientECCKeyPair.sec";
     private static final String SERVER_ECC_PUBLIC_KEY_PATH = "client/ServerECCPubKey.txt";
-    private static final String USER_ID = "userId";
-    private static final String PASSWORD = "password";
-    private final Socket socket;
-    private final String request;
-
-    private final ShpCryptoSpec clientCryptoSpec;
-    private final byte[] udpPortBytes;
+    private ShpCryptoSpec clientCryptoSpec;
     private PublicKey serverPublicKey;
-    private final byte[] passwordDigest = ShpCryptoSpec.digest(PASSWORD.getBytes());
+    private Socket socket;
+
+    // Protocol parameters
+    private String userId;
+    private byte[] passwordDigest;
+    private String request;
+    private byte[] udpPortBytes;
+
+    // Protocol output
     private String cryptoConfig;
+    private byte[] sharedSecret;
 
 
-    public ShpClient(String userId, String password, String request, int udpPort) throws IOException {
-        this.socket = new Socket("localhost", TCP_PORT);
-        this.request = request;
-        this.output = new ObjectOutputStream(socket.getOutputStream());
-        this.input = new ObjectInputStream(socket.getInputStream());
-        this.udpPortBytes = ByteBuffer.allocate(Integer.BYTES).putInt(udpPort).array();
-        this.clientCryptoSpec = new ShpCryptoSpec(CLIENT_ECC_KEYPAIR_PATH);
-        this.clientCryptoSpec.initIntegrityCheck(passwordDigest);
-        loadResources();
-
+    public ShpClient() {
     }
 
-    public ClientOutput startClient() {
-        State state = runProtocol();
-        if (state == State.FINISHED) {
-            return new ClientOutput(cryptoConfig);
+    public ShpClientOutput shpClient(String serverAddress, int tcpPort, String userId, String password, String request, int udpPort) {
+        setInitInput(userId, password, request, udpPort);
+        State state = runProtocolClient(serverAddress, tcpPort);
+        if (state != State.FINISHED) {
+            throw new IllegalStateException("Client did not finish successfully");
         }
-        throw new IllegalStateException("Client did not finish successfully");
+        return new ShpClientOutput(cryptoConfig);
     }
 
-    private void init() {
+    private void setInitInput(String userId, String password, String request, int udpPort) {
+        this.userId = userId;
+        this.passwordDigest = ShpCryptoSpec.digest(password.getBytes());
+        this.request = request;
+        this.udpPortBytes = ByteBuffer.allocate(Integer.BYTES).putInt(udpPort).array();
+        this.clientCryptoSpec.initIntegrityCheck(passwordDigest);
+    }
+
+    protected State runProtocolClient(String serverAddress, int tcpPort) {
+        try {
+            setupConnection(serverAddress, tcpPort);
+            initProtocol();
+            return super.runProtocol();
+        } finally {
+            closeConnection();
+            clientCryptoSpec.reset();   // Reset the crypto spec to avoid reusing the same init parameters
+        }
+    }
+
+    private void setupConnection(String serverAddress, int tcpPort) {
+        try {
+            this.socket = new Socket(serverAddress, tcpPort);
+            this.output = new ObjectOutputStream(socket.getOutputStream());
+            this.input = new ObjectInputStream(socket.getInputStream());
+        } catch (IOException e) {
+            LOGGER.severe("Error setting up connection: " + e.getMessage());
+        }
+    }
+
+    private void initProtocol() {
         byte[] header = getMessageHeader(MsgType.TYPE_1);
-        byte[] userId = USER_ID.getBytes();
+        byte[] userId = this.userId.getBytes();
         try {
             output.writeObject(createShpMessage(header, userId));
         } catch (IOException e) {
             LOGGER.severe("Error sending message type 1");
+        }
+    }
+
+    private void closeConnection() {
+        try {
+            closeStreams();
+            if (socket != null) {
+                socket.close();
+            }
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "Failed to close client connection resources.", e);
         }
     }
 
@@ -72,11 +109,6 @@ public class ShpClient extends AbstractShpPeer {
                 return State.ERROR; // Should not happen
             }
         }
-    }
-
-    @Override
-    protected boolean isConnectionClosed() {
-        return socket.isClosed();
     }
 
     private State handleType2Message(List<byte[]> payload) {
@@ -100,9 +132,9 @@ public class ShpClient extends AbstractShpPeer {
         byte[] incrementedServerNonce = Utils.getIncrementedBytes(serverNonce);
 
         // Nonce 4 and UDP port that will be used for the next message
-        byte[] clientNonce = ShpCryptoSpec.generateShpNonce();
+        byte[] clientNonce = clientCryptoSpec.generateShpNonce();
 
-        byte[] data = Utils.concat(request.getBytes(), USER_ID.getBytes(), incrementedServerNonce, clientNonce, udpPortBytes);
+        byte[] data = Utils.concat(request.getBytes(), this.userId.getBytes(), incrementedServerNonce, clientNonce, udpPortBytes);
 
         try {
             byte[] passwordEncryptedData = clientCryptoSpec.passwordBasedEncrypt(data, new String(passwordDigest), salt, iterationCount);
@@ -166,14 +198,14 @@ public class ShpClient extends AbstractShpPeer {
                 return State.ERROR;
             }
 
-            //cryptoConfigBytes = decryptedDataParts[3]; TODO: Create ciphersuite from bytes
+            byte[] cryptoConfigBytes = decryptedDataParts[3];
 
             byte[] signatureMessage = Utils.concat(
                     response,
-                    USER_ID.getBytes(),
+                    this.userId.getBytes(),
                     firstNonce,
                     secondNonce,
-                    //cryptoConfigBytes,
+                    cryptoConfigBytes,
                     ydhServer);
 
             if (!clientCryptoSpec.verifySignature(serverPublicKey, signatureMessage, serverSignature)) {
@@ -192,12 +224,11 @@ public class ShpClient extends AbstractShpPeer {
             byte[] integrityProof = clientCryptoSpec.createIntegrityProof(encryptedMessage);
 
             byte[] header = getMessageHeader(MsgType.TYPE_5);
+
+            // Create ciphersuite from bytes
+            this.cryptoConfig = new String(cryptoConfigBytes, StandardCharsets.UTF_8);
+
             output.writeObject(createShpMessage(header, encryptedMessage, integrityProof));
-
-
-            //TODO: Create ciphersuite from bytes
-
-            socket.close();
 
             return State.FINISHED;
         } catch (IOException | GeneralSecurityException e) {
@@ -206,19 +237,18 @@ public class ShpClient extends AbstractShpPeer {
         }
     }
 
-    protected State runProtocol() {
-        init();
-        return super.runProtocol();
+    @Override
+    protected boolean isConnectionClosed() {
+        return socket.isClosed();
     }
-
 
     @Override
     protected void loadResources() {
         try {
-            serverPublicKey = ShpCryptoSpec.loadPublicKeyFromFile(SERVER_ECC_PUBLIC_KEY_PATH);
+            this.serverPublicKey = ShpCryptoSpec.loadPublicKeyFromFile(SERVER_ECC_PUBLIC_KEY_PATH);
+            this.clientCryptoSpec = new ShpCryptoSpec(CLIENT_ECC_KEYPAIR_PATH);
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to load client resources.", e);
         }
-
     }
 }

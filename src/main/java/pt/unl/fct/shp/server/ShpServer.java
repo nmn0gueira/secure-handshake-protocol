@@ -17,95 +17,83 @@ import java.util.logging.Level;
 
 public class ShpServer extends AbstractShpPeer {
 
+    // Server resources
     private static final String SERVER_ECC_KEYPAIR_PATH = "server/ServerECCKeyPair.sec";
     private static final String SERVER_CRYPTO_CONFIG_PATH = "server/ciphersuite.conf";
-    private final Map<String, User> userDatabase;
-    private final Set<String> validRequests;
-    private final ShpCryptoSpec serverCryptoSpec;
-    private final ServerSocket serverSocket;
+    private Map<String, User> userDatabase;
+    private byte[] cryptoConfigBytes;
+    private ShpCryptoSpec serverCryptoSpec;
+    private ServerSocket serverSocket;
+
+    // Current client connection
     private Socket clientSocket;
     private User currentUser;
-    private byte[] cryptoConfigBytes;
+
+    // Protocol parameters
+    private Set<String> validRequests;
+
+    // Protocol output
     private String userRequest;
     private int udpPort;
+    private byte[] sharedSecret;
 
 
-    /**
-     * Creates a new SHP server.
-     *
-     * @throws IOException - if an I/O error occurs when creating the ServerSocket.
-     */
-    public ShpServer(Set<String> validRequests) throws IOException {
-        userDatabase = new HashMap<>();
+    public ShpServer() {
+    }
+
+    public ShpServerOutput shpServer(int tcpPort, Set<String> validRequests) {
+        setInitInput(validRequests);
+        State state = runProtocolServer(tcpPort);
+        if (state != State.FINISHED) {
+            throw new IllegalStateException("Protocol did not finish successfully.");
+        }
+        return new ShpServerOutput(userRequest, udpPort);
+    }
+
+    private void setInitInput(Set<String> validRequests) {
         this.validRequests = validRequests;
-        this.serverSocket = new ServerSocket(TCP_PORT);
-        this.serverCryptoSpec = new ShpCryptoSpec(SERVER_ECC_KEYPAIR_PATH);
-        LOGGER.info("Server is listening on port " + TCP_PORT);
-        loadResources();
-
     }
 
-    public ServerOutput startServer() {
-        runProtocol();
-        if (userRequest == null || udpPort == 0) {
-            throw new IllegalStateException("User request and UDP port were not set.");
-        }
-        return new ServerOutput(userRequest, udpPort);
-    }
-
-    @Override
-    protected void loadResources() {
+    protected State runProtocolServer(int tcpPort) {
         try {
-            loadUserDatabase();
-            loadCryptoConfig();
-        } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Failed to load server resources.", e);
-        }
-    }
-
-    private void loadUserDatabase() throws IOException {
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("server/userdatabase.txt");
-        assert inputStream != null;
-        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-        String line;
-        while ((line = reader.readLine()) != null) {
-            String[] parts = line.split(":");
-            String userId = parts[0].trim();
-            byte[] passwordHash = Utils.hexStringToByteArray(parts[1].trim());
-            byte[] salt = Utils.hexStringToByteArray(parts[2].trim());
-            byte[] publicKeyBytes = Utils.hexStringToByteArray(parts[3].trim());
-            userDatabase.put(userId, new User(userId, passwordHash, salt, ShpCryptoSpec.loadPublicKey(publicKeyBytes)));
-        }
-    }
-
-    private void loadCryptoConfig() throws IOException {
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream(SERVER_CRYPTO_CONFIG_PATH);
-        assert inputStream != null;
-        cryptoConfigBytes = inputStream.readAllBytes();
-    }
-
-    @Override
-    protected State runProtocol() {
-        try {
+            startListening(tcpPort);
             acceptClientConnection();
+            return super.runProtocol();
+        } finally {
+            closeConnection();
+            serverCryptoSpec.reset();   // Reset the crypto spec to avoid reusing the same init parameters
+        }
+    }
+
+    private void startListening(int tcpPort) {
+        try {
+            serverSocket = new ServerSocket(tcpPort);
+            LOGGER.info("Server started listening on port " + tcpPort);
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Failed to start server socket.", e);
+        }
+    }
+
+    private void acceptClientConnection()  {
+        try {
+            clientSocket = serverSocket.accept();
+            output = new ObjectOutputStream(clientSocket.getOutputStream());
+            input = new ObjectInputStream(clientSocket.getInputStream());
+            LOGGER.info("Client connected.");
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to accept client connection.", e);
         }
-        return super.runProtocol();
     }
 
-    @Override
-    protected boolean isConnectionClosed() {
-        return clientSocket == null || clientSocket.isClosed();
-    }
-
-    private void acceptClientConnection() throws IOException {
-        clientSocket = serverSocket.accept();
-        input = new ObjectInputStream(clientSocket.getInputStream());
-        output = new ObjectOutputStream(clientSocket.getOutputStream());
-        LOGGER.info("Client connected.");
+    private void closeConnection() {
+        try {
+            closeStreams();
+            if (serverSocket != null) {
+                serverSocket.close();
+            }
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "Failed to close server connection resources.", e);
+        }
     }
 
     @Override
@@ -137,9 +125,9 @@ public class ShpServer extends AbstractShpPeer {
             return State.ERROR;
         }
 
-        byte[] salt = ShpCryptoSpec.generateShpNonce();
-        byte[] iterationBytes = ShpCryptoSpec.generateShpIterationBytes();
-        byte[] nonce = ShpCryptoSpec.generateShpNonce();
+        byte[] salt = serverCryptoSpec.generateShpNonce();
+        byte[] iterationBytes = serverCryptoSpec.generateShpIterationBytes();
+        byte[] nonce = serverCryptoSpec.generateShpNonce();
 
         // Initialize cryptographic constructions for this user
         serverCryptoSpec.initIntegrityCheck(currentUser.passwordHash());
@@ -233,7 +221,7 @@ public class ShpServer extends AbstractShpPeer {
 
             byte[] confirmation = ShpCryptoSpec.REQUEST_CONFIRMATION.getBytes();
             byte[] incrementedClientNonce = Utils.getIncrementedBytes(clientNonce);
-            byte[] newServerNonce = ShpCryptoSpec.generateShpNonce();
+            byte[] newServerNonce = serverCryptoSpec.generateShpNonce();
 
             byte[] publicKeyEncryptedData = serverCryptoSpec.asymmetricEncrypt(
                     Utils.concat(confirmation, incrementedClientNonce, newServerNonce, cryptoConfigBytes),
@@ -254,9 +242,9 @@ public class ShpServer extends AbstractShpPeer {
 
             byte[] header = getMessageHeader(MsgType.TYPE_4);
 
-            userRequest = new String(requestBytes);
+            this.userRequest = new String(requestBytes);
             // Extract the UDP port from the received bytes
-            udpPort = ((udpPortBytes[0] & 0xFF) << 24) | ((udpPortBytes[1] & 0xFF) << 16) | ((udpPortBytes[2] & 0xFF) << 8) | (udpPortBytes[3] & 0xFF);
+            this.udpPort = ((udpPortBytes[0] & 0xFF) << 24) | ((udpPortBytes[1] & 0xFF) << 16) | ((udpPortBytes[2] & 0xFF) << 8) | (udpPortBytes[3] & 0xFF);
 
             output.writeObject(createShpMessage(header, publicKeyEncryptedData, ydhServer, digitalSignature, integrityProof));
             LOGGER.info("Sent TYPE_4 response.");
@@ -304,6 +292,46 @@ public class ShpServer extends AbstractShpPeer {
             LOGGER.log(Level.SEVERE, "Error processing TYPE_5 message.", e);
             return State.ERROR;
         }
+    }
+
+    @Override
+    protected boolean isConnectionClosed() {
+        return clientSocket == null || clientSocket.isClosed();
+    }
+
+    @Override
+    protected void loadResources() {
+        try {
+            loadUserDatabase();
+            loadCryptoConfig();
+            this.serverCryptoSpec = new ShpCryptoSpec(SERVER_ECC_KEYPAIR_PATH);
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Failed to load server resources.", e);
+        }
+    }
+
+    private void loadUserDatabase() throws IOException {
+        this.userDatabase = new HashMap<>();
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        InputStream inputStream = classLoader.getResourceAsStream("server/userdatabase.txt");
+        assert inputStream != null;
+        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String[] parts = line.split(":");
+            String userId = parts[0].trim();
+            byte[] passwordHash = Utils.hexStringToByteArray(parts[1].trim());
+            byte[] salt = Utils.hexStringToByteArray(parts[2].trim());
+            byte[] publicKeyBytes = Utils.hexStringToByteArray(parts[3].trim());
+            this.userDatabase.put(userId, new User(userId, passwordHash, salt, ShpCryptoSpec.loadPublicKey(publicKeyBytes)));
+        }
+    }
+
+    private void loadCryptoConfig() throws IOException {
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        InputStream inputStream = classLoader.getResourceAsStream(SERVER_CRYPTO_CONFIG_PATH);
+        assert inputStream != null;
+        cryptoConfigBytes = inputStream.readAllBytes();
     }
 
 }

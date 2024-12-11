@@ -11,8 +11,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 
-public class CryptoUtils {
-    public static final SecureRandom SECURE_RANDOM = new SecureRandom();
+public class KeyLoader {
 
     /**
      * Loads a key pair from a file.
