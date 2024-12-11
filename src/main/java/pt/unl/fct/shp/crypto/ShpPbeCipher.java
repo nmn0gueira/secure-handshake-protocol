@@ -15,37 +15,34 @@ import java.security.spec.InvalidKeySpecException;
 
 public class ShpPbeCipher implements SymmetricCipher {
 
-    private static final Cipher PBE_CIPHER;
-    private static final SecretKeyFactory PBE_KEY_FACTORY;
-
-    static {
-        try {
-            PBE_CIPHER = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
-            PBE_KEY_FACTORY = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException | NoSuchProviderException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
+    private final Cipher pbeCipher;
     private final SecretKey key;
     private final byte[] salt;
     private final int iterationCount;
 
-    public ShpPbeCipher(String password, byte[] salt, int iterationCount) throws InvalidKeySpecException {
-        this.key = PBE_KEY_FACTORY.generateSecret(new PBEKeySpec(password.toCharArray()));
+    public ShpPbeCipher(String password, byte[] salt, int iterationCount) {
+        try {
+            SecretKeyFactory pbeKeyFactory = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
+
+            this.key = pbeKeyFactory.generateSecret(new PBEKeySpec(password.toCharArray()));
+            this.pbeCipher = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
+
+        } catch (InvalidKeySpecException | NoSuchPaddingException | NoSuchAlgorithmException | NoSuchProviderException e) {
+            throw new RuntimeException(e);
+        }
         this.salt = salt;
         this.iterationCount = iterationCount;
     }
 
     @Override
     public byte[] encrypt(byte[] data) throws GeneralSecurityException {
-        PBE_CIPHER.init(Cipher.ENCRYPT_MODE, key, new PBEParameterSpec(salt, iterationCount));
-        return PBE_CIPHER.doFinal(data);
+        pbeCipher.init(Cipher.ENCRYPT_MODE, key, new PBEParameterSpec(salt, iterationCount));
+        return pbeCipher.doFinal(data);
     }
 
     @Override
     public byte[] decrypt(byte[] encryptedData) throws GeneralSecurityException {
-        PBE_CIPHER.init(Cipher.DECRYPT_MODE, key, new PBEParameterSpec(salt, iterationCount));
-        return PBE_CIPHER.doFinal(encryptedData);
+        pbeCipher.init(Cipher.DECRYPT_MODE, key, new PBEParameterSpec(salt, iterationCount));
+        return pbeCipher.doFinal(encryptedData);
     }
 }

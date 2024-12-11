@@ -14,7 +14,7 @@ public class Utils
      * @param length : nr of bytes in data block to be converted
      * @return  hex : hexadecimal representation of data
      */
-    public static String toHex(byte[] data, int length)
+    public static String byteArrayToHexString(byte[] data, int length)
     {
         StringBuilder buf = new StringBuilder();
 
@@ -35,9 +35,9 @@ public class Utils
      * @param data : bytes to be converted
      * @return : hexadecimal representation of data
      */
-    public static String toHex(byte[] data)
+    public static String byteArrayToHexString(byte[] data)
     {
-        return toHex(data, data.length);
+        return byteArrayToHexString(data, data.length);
     }
 
     public static byte[] hexStringToByteArray(String s) {
@@ -78,22 +78,45 @@ public class Utils
     }
 
     /**
-     * Returns an array of byte arrays, each one being a subarray of the original array, delimited by the indexes
+     * Returns an array of byte arrays, each one being a subarray of the original array, delimited by the indices
      * @param array - the original array
-     * @param indexes - the indexes that delimit the subarrays
-     * @return - an array of byte arrays, each one being a subarray of the original array, delimited by the indexes
+     * @param indices - the indices that delimit the parts in which the array will be divided
+     * @return - an array of byte arrays, each one being a subarray of the original array, delimited by the indices
      */
-    public static byte[][] divideInParts(byte[] array, int... indexes) {
-        for (int i = 0; i < indexes.length - 1; i++) {
-            if (indexes[i] > indexes[i + 1]) {
+    public static byte[][] divideInParts(byte[] array, int... indices) {
+        byte[][] result = getSubArrayNum(array, indices);
+
+        int previousIndex = 0;
+        for (int i = 0; i < indices.length; i++) {
+            int currentIndex = indices[i];
+
+            // Get subarray from previousIndex to currentIndex (exclusive)
+            result[i] = subArray(array, previousIndex, currentIndex);
+
+            // Update previousIndex to the current boundary index
+            previousIndex = currentIndex;
+        }
+
+        // Get the remaining part of the array from the last index to the end
+        result[indices.length] = subArray(array, previousIndex, array.length);
+
+        return result;
+    }
+
+    private static byte[][] getSubArrayNum(byte[] array, int[] indices) {
+        for (int i = 0; i < indices.length - 1; i++) {
+            if (indices[i] > indices[i + 1]) {
                 throw new IllegalArgumentException("Indexes must be in ascending order");
             }
         }
-        byte[][] result = new byte[indexes.length - 1][];
-        for (int i = 0; i < indexes.length - 1; i++) {
-            result[i] = subArray(array, indexes[i], indexes[i + 1]);
+
+        if (indices[0] <= 0 || indices[indices.length - 1] >= array.length) {
+            throw new IllegalArgumentException("Indexes must be within the bounds of the array");
         }
-        return result;
+
+        // Calculate the number of subarrays to create (includes initial and final parts)
+        int numParts = indices.length + 1;
+        return new byte[numParts][];
     }
 
     /**
@@ -119,7 +142,7 @@ public class Utils
     public static String getHexRepresentation(byte[] data) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < data.length; i++) {
-            sb.append(Utils.toHex(new byte[]{data[i]}));
+            sb.append(Utils.byteArrayToHexString(new byte[]{data[i]}));
             if (i != data.length - 1) {
                 sb.append(" ");
             }

@@ -36,9 +36,9 @@ public class ShpMessage implements Serializable {
     public String toString() {
         // Print the header and each separate component in hexadecimal format
         StringBuilder sb = new StringBuilder();
-        sb.append("Header: ").append(Utils.toHex(header)).append("\n");
+        sb.append("Header: ").append(Utils.byteArrayToHexString(header)).append("\n");
         for (int i = 0; i < payload.size(); i++) {
-            sb.append("Payload component ").append(i).append(": ").append(Utils.toHex(payload.get(i))).append("\n");
+            sb.append("Payload component ").append(i).append(": ").append(Utils.byteArrayToHexString(payload.get(i))).append("\n");
         }
         return sb.toString();
     }

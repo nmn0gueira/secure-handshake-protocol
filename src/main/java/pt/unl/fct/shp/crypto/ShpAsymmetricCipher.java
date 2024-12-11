@@ -9,30 +9,25 @@ import java.security.PublicKey;
 
 public class ShpAsymmetricCipher implements AsymmetricCipher {
 
-    private static final Cipher ECC_CIPHER;
+    private final Cipher eccCipher;
 
-    static {
+    public ShpAsymmetricCipher() {
         try {
-            ECC_CIPHER = Cipher.getInstance("ECIES", "BC");
+            eccCipher = Cipher.getInstance("ECIES", "BC");
         } catch (GeneralSecurityException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public ShpAsymmetricCipher() {
-        // empty
-    }
-
-
     @Override
     public byte[] encrypt(byte[] data, PublicKey publicKey) throws GeneralSecurityException {
-        ECC_CIPHER.init(Cipher.ENCRYPT_MODE, publicKey);
-        return ECC_CIPHER.doFinal(data);
+        eccCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+        return eccCipher.doFinal(data);
     }
 
     @Override
     public byte[] decrypt(byte[] encryptedData, PrivateKey privateKey) throws GeneralSecurityException {
-        ECC_CIPHER.init(Cipher.DECRYPT_MODE, privateKey);
-        return ECC_CIPHER.doFinal(encryptedData);
+        eccCipher.init(Cipher.DECRYPT_MODE, privateKey);
+        return eccCipher.doFinal(encryptedData);
     }
 }

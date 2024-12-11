@@ -3,16 +3,9 @@ package pt.unl.fct.shp.crypto;
 import pt.unl.fct.common.Utils;
 import pt.unl.fct.common.crypto.*;
 
-import javax.crypto.*;
-import javax.crypto.spec.DHParameterSpec;
 import java.io.IOException;
-import java.math.BigInteger;
+
 import java.security.*;
-import java.security.spec.ECGenParameterSpec;
-import java.security.PrivateKey;
-import java.security.PublicKey;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.spec.InvalidKeySpecException;
 import java.util.logging.Logger;
 
@@ -21,6 +14,19 @@ public class ShpCryptoSpec {
 
     private static final MessageDigest SHA256;
     private static final Logger LOGGER = Logger.getLogger(ShpCryptoSpec.class.getName());
+
+    private static final KeyFactory DIFFIE_HELLMAN_KEY_FACTORY;
+    private static final KeyFactory ECDSA_KEY_FACTORY;
+
+    static {
+        try {
+            DIFFIE_HELLMAN_KEY_FACTORY = KeyFactory.getInstance("DH", "BC");
+            ECDSA_KEY_FACTORY = KeyFactory.getInstance("ECDSA", "BC");
+
+        } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     static {
         try {
@@ -54,20 +60,19 @@ public class ShpCryptoSpec {
         this.digitalSignature = new ShpDigitalSignature();
         this.keyAgreement = new ShpKeyAgreement();
         try {
-            this.peerKeyPair = CryptoUtils.loadKeyPairFromFile(keyPairPath);
-        } catch (IOException | GeneralSecurityException e) {
+            this.peerKeyPair = CryptoUtils.loadKeyPairFromFile(keyPairPath, ECDSA_KEY_FACTORY);
+        } catch (IOException e) {
             LOGGER.severe("Error loading key pair from file.");
             throw new RuntimeException(e);
         }
-
     }
 
-    public void initPbeCipher(String password, byte[] salt, int iterationCount) throws InvalidKeySpecException {
+    public void initPbeCipher(String password, byte[] salt, int iterationCount) {
         this.pbeCipher = new ShpPbeCipher(password, salt, iterationCount);
     }
 
     public void initSharedKeyCipher(byte[] sharedKey) {
-        this.sharedKeyCipher = new ShpSharedKeyCipher(sharedKey);
+        this.sharedKeyCipher = new ShpSharedKeyCipher(sharedKey, Utils.getFirstBytes(sharedKey, 16));
     }
 
     public void initIntegrityCheck(byte[] key)  {
@@ -83,11 +88,12 @@ public class ShpCryptoSpec {
      * Generates a shared key using the provided public key. Two-way Diffie-Hellman key exchange is performed.
      * @param publicKey The public key to generate the shared key with
      * @return The generated shared key
-     * @throws GeneralSecurityException
+     * @throws GeneralSecurityException In case of crypto error
      */
     public byte[] generateSharedKey(byte[] publicKey) throws GeneralSecurityException {
-        keyAgreement.doPhase(CryptoUtils.loadDHPublicKey(publicKey));
-        return this.keyAgreement.generateSecret();
+        PublicKey publicKeyObj = CryptoUtils.loadPublicKey(publicKey, DIFFIE_HELLMAN_KEY_FACTORY);
+        keyAgreement.doPhase(publicKeyObj);
+        return digest(keyAgreement.generateSecret());
     }
 
     /**
@@ -112,7 +118,7 @@ public class ShpCryptoSpec {
      * @throws InvalidKeyException In case of invalid key
      * @throws SignatureException   In case of signature failure
      */
-    public boolean verify(PublicKey publicKey, byte[] message, byte[] signature) throws InvalidKeyException, SignatureException, InvalidKeySpecException {
+    public boolean verifySignature(PublicKey publicKey, byte[] message, byte[] signature) throws InvalidKeyException, SignatureException, InvalidKeySpecException {
         return digitalSignature.verify(publicKey, message, signature);
     }
 
@@ -166,30 +172,8 @@ public class ShpCryptoSpec {
         return nonce;
     }
 
-    /**
-     * Generates a SH256 digest for the provided data.
-     *
-     * @param data Data for which the digest will be generated
-     * @return The generated digest as a byte array
-     */
-    public static byte[] digest(byte[] data) {
-        return SHA256.digest(data);
-    }
-
-    public byte[] getPublicDiffieHellmanKeyBytes() {
+    public byte[] getYdhBytes() {
         return keyAgreement.getPublicKey().getEncoded();
-    }
-
-    public int getPublicDiffieHellmanKeyLength() {
-        return keyAgreement.getPublicKey().getEncoded().length;
-    }
-
-    public int getIntegrityProofSize() {
-        if (integrityCheck == null) {
-            LOGGER.severe("Integrity check not initialized.");
-            throw new IllegalStateException();
-        }
-        return integrityCheck.getIntegrityProofSize();
     }
 
     /**
@@ -257,5 +241,23 @@ public class ShpCryptoSpec {
     }
     public byte[] asymmetricDecrypt(byte[] encryptedData) throws GeneralSecurityException{
         return asymmetricCipher.decrypt(encryptedData, peerKeyPair.getPrivate());
+    }
+
+    /**
+     * Generates a SH256 digest for the provided data.
+     *
+     * @param data Data for which the digest will be generated
+     * @return The generated digest as a byte array
+     */
+    public static byte[] digest(byte[] data) {
+        return SHA256.digest(data);
+    }
+
+    public static PublicKey loadPublicKeyFromFile(String filePath) throws IOException {
+        return CryptoUtils.loadPublicKeyFromFile(filePath, ECDSA_KEY_FACTORY);
+    }
+
+    public static PublicKey loadPublicKey(byte[] publicKeyBytes) {
+        return CryptoUtils.loadPublicKey(publicKeyBytes, ECDSA_KEY_FACTORY);
     }
 }

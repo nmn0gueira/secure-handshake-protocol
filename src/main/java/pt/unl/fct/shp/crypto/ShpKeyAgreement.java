@@ -8,10 +8,6 @@ import java.math.BigInteger;
 import java.security.*;
 
 public class ShpKeyAgreement implements CustomKeyAgreement {
-
-    private static final KeyPairGenerator DIFFIE_HELLMAN_KEY_PAIR_GENERATOR;
-    private static final KeyAgreement DIFFIE_HELLMAN_KEY_AGREEMENT;
-
     /*
      * Pre-computed values for the primitive root G and
      * prime number P, that will be used for the dynamic key-agreement
@@ -29,35 +25,30 @@ public class ShpKeyAgreement implements CustomKeyAgreement {
 
     private static final DHParameterSpec DH_PARAMETER_SPEC = new DHParameterSpec(P_512, G_512);
 
-    static {
-        try {
-            DIFFIE_HELLMAN_KEY_PAIR_GENERATOR = KeyPairGenerator.getInstance("DH", "BC");
-            DIFFIE_HELLMAN_KEY_PAIR_GENERATOR.initialize(DH_PARAMETER_SPEC);
-            DIFFIE_HELLMAN_KEY_AGREEMENT = KeyAgreement.getInstance("DH", "BC");
-        } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidAlgorithmParameterException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     private final KeyPair keyPair;
+    private final KeyAgreement diffieHellmanKeyAgreement;
 
     public ShpKeyAgreement()  {
-        keyPair = DIFFIE_HELLMAN_KEY_PAIR_GENERATOR.generateKeyPair();
         try {
-            DIFFIE_HELLMAN_KEY_AGREEMENT.init(keyPair.getPrivate());
-        } catch (InvalidKeyException e) {
+            KeyPairGenerator dhkpg = KeyPairGenerator.getInstance("DH", "BC");
+            dhkpg.initialize(DH_PARAMETER_SPEC);
+            keyPair = dhkpg.generateKeyPair();
+            diffieHellmanKeyAgreement = KeyAgreement.getInstance("DH", "BC");
+            diffieHellmanKeyAgreement.init(keyPair.getPrivate());
+        } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidAlgorithmParameterException | InvalidKeyException e) {
             throw new RuntimeException(e);
         }
     }
 
     @Override
     public void doPhase(PublicKey publicKey) throws InvalidKeyException {
-        DIFFIE_HELLMAN_KEY_AGREEMENT.doPhase(publicKey, true);
+        diffieHellmanKeyAgreement.doPhase(publicKey, true);
     }
 
     @Override
     public byte[] generateSecret() {
-        return DIFFIE_HELLMAN_KEY_AGREEMENT.generateSecret();
+        return diffieHellmanKeyAgreement.generateSecret();
     }
 
     @Override

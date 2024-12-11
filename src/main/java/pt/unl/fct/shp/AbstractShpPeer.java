@@ -1,7 +1,7 @@
 package pt.unl.fct.shp;
 
 import java.io.*;
-import java.nio.ByteBuffer;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -30,14 +30,14 @@ public abstract class AbstractShpPeer {
         FINISHED
     }
 
-    protected static final int PORT = 7777;
-    protected static final byte[] UDP_PORT_BYTES = ByteBuffer.allocate(Integer.BYTES).putInt(PORT).array();
+    protected static final int TCP_PORT = 7777;
     protected static final int TIMEOUT_MS = 10000;
     private static final short SHP_VERSION = 0x01;
     private static final byte SHP_RELEASE = 0x01;
 
     protected ObjectOutputStream output;
     protected ObjectInputStream input;
+    protected final HashSet<byte[]> noncesReceived = new HashSet<>();
     private final BlockingQueue<Object> objectQueue = new LinkedBlockingQueue<>();
 
     protected final Logger LOGGER = Logger.getLogger(this.getClass().getName());
@@ -90,21 +90,23 @@ public abstract class AbstractShpPeer {
     protected abstract State handleMessage(MsgType msgType, List<byte[]> payload);
 
     @SuppressWarnings("all")
-    protected void runProtocol() {
+    protected State runProtocol() {
         startObjectReader(input);
+
         long timeout = System.currentTimeMillis() + TIMEOUT_MS;
         boolean timeoutCondition = false;
+
         // Main loop for processing messages
         while (!isConnectionClosed() && (timeoutCondition = System.currentTimeMillis() < timeout)) {
             try {
                 switch (processMessage()) {
                     case ERROR -> {
                         LOGGER.warning("Error during protocol execution.");
-                        return;
+                        return State.ERROR;
                     }
                     case FINISHED -> {
                         LOGGER.info("Protocol finished.");
-                        return;
+                        return State.FINISHED;
                     }
                     case ONGOING -> timeout = System.currentTimeMillis() + TIMEOUT_MS;
                     case WAITING -> Thread.sleep(1000);
@@ -120,7 +122,11 @@ public abstract class AbstractShpPeer {
         }
         if (!timeoutCondition) {
             LOGGER.warning("Timeout reached.");
+            return State.ERROR;
         }
+
+        LOGGER.info("Connection closed.");
+        return State.ERROR;
     }
 
     private void startObjectReader(ObjectInputStream objectInputStream) {
@@ -130,10 +136,12 @@ public abstract class AbstractShpPeer {
                     Object receivedObject = objectInputStream.readObject();
                     objectQueue.put(receivedObject);
                 }
-            } catch (EOFException e) {
+            } catch (EOFException | InterruptedException e) {
                 LOGGER.info("End of stream reached, stopping reader thread.");
-            } catch (Exception e) {
-                LOGGER.severe("Error in reader thread: " + e.getMessage());
+            } catch (IOException e) {
+                LOGGER.severe("Socket closed, stopping reader thread");
+            } catch (ClassNotFoundException e) {
+                LOGGER.severe("Class not found: " + e.getMessage());
             }
         });
         readerThread.setDaemon(true);
@@ -146,9 +154,9 @@ public abstract class AbstractShpPeer {
     protected abstract void loadResources();
 
     protected ShpMessage createShpMessage(byte[] header, byte[]... components) {
-        for (byte[] component : components) {
+        /*for (byte[] component : components) {
             System.out.println("Component: " + component.length);
-        }
+        }*/
         return new ShpMessage(header, components);
     }
 }
