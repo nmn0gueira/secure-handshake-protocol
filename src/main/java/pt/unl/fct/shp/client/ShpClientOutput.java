@@ -1,4 +1,4 @@
 package pt.unl.fct.shp.client;
 
-public record ShpClientOutput(String cryptoConfig) {
+public record ShpClientOutput(String cryptoConfig, byte[] sharedSecret) {
 }

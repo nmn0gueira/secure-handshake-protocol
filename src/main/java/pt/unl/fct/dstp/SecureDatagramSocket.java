@@ -27,6 +27,26 @@ public class SecureDatagramSocket extends DatagramSocket {
         secureSocketBase = new SecureSocketBase(cryptoConfigFile);
     }
 
+    public SecureDatagramSocket(String cryptoConfig, byte[] sharedSecret) throws SocketException {
+        super();
+        secureSocketBase = new SecureSocketBase(cryptoConfig, sharedSecret);
+    }
+
+    public SecureDatagramSocket(int port, String cryptoConfig, byte[] sharedSecret) throws SocketException {
+        super(port);
+        secureSocketBase = new SecureSocketBase(cryptoConfig, sharedSecret);
+    }
+
+    public SecureDatagramSocket(int port, InetAddress iAddr, String cryptoConfig, byte[] sharedSecret) throws SocketException {
+        super(port, iAddr);
+        secureSocketBase = new SecureSocketBase(cryptoConfig, sharedSecret);
+    }
+
+    public SecureDatagramSocket(SocketAddress bindAddr, String cryptoConfig, byte[] sharedSecret) throws SocketException {
+        super(bindAddr);
+        secureSocketBase = new SecureSocketBase(cryptoConfig, sharedSecret);
+    }
+
     /**
      * Creates and sends DSTP packet from the provided datagram packet. A DSTP packet is composed
      * of a 5 byte header (DSTP version, release, and data length) and an encrypted payload

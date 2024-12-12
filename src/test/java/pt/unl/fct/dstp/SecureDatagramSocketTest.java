@@ -4,6 +4,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import pt.unl.fct.common.Utils;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.Security;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -28,6 +30,10 @@ class TestSecureDatagramSocket extends SecureDatagramSocket {
 
     public TestSecureDatagramSocket(String cryptoConfigFile) throws Exception {
         super(cryptoConfigFile);
+    }
+
+    public TestSecureDatagramSocket(String cryptoConfig, byte[] sharedSecret) throws Exception {
+        super(cryptoConfig, sharedSecret);
     }
 
     public void tamperedSend(DatagramPacket packet) throws Exception {
@@ -63,6 +69,7 @@ public class SecureDatagramSocketTest {
     private SecureDatagramSocket serverSocket;
     private SecureDatagramSocket clientSocket;
     private static final long TIMEOUT_MS = 3000;
+    private static final byte[] sharedSecret = Utils.hexStringToByteArray("90f2a9e2b7feb204dbed990f4c7d01db8ec3bee3169207199593bc9181f636356c112b02c229fb450b0c713069ddfc84e22e45cd3c7727b45a32c6d0269692a2");
     static {
         Security.addProvider(new BouncyCastleProvider());
     }
@@ -117,7 +124,7 @@ public class SecureDatagramSocketTest {
     }
 
     @ParameterizedTest
-    @MethodSource("configFilesProvider")
+    @MethodSource({"configFilesProvider"})
     public void testSendAndReceiveMultiple(String config) throws Exception {
         int port = setup(config);
         byte[] message = "Hello, Secure World!".getBytes();
@@ -250,7 +257,7 @@ public class SecureDatagramSocketTest {
 
     static Stream<String> configFilesProvider() throws IOException, URISyntaxException {
         // Directory where your config files are stored
-        Path configDir = Paths.get(SecureDatagramSocketTest.class.getClassLoader().getResource("test-configs").toURI());
+        Path configDir = Paths.get(Objects.requireNonNull(SecureDatagramSocketTest.class.getClassLoader().getResource("test-configs/fixed")).toURI());
         return Files.walk(configDir)
                 .filter(Files::isRegularFile)
                 .map(Path::toString);

@@ -2,6 +2,7 @@ package pt.unl.fct.common;
 
 import org.junit.Test;
 import pt.unl.fct.dstp.crypto.DstpCryptoSpec;
+import pt.unl.fct.dstp.crypto.FileDstpCryptoSpec;
 
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
@@ -18,7 +19,7 @@ public class CryptoTest {
 
     @Test
     public void testAlgorithm() {
-        DstpCryptoSpec dstpCryptoSpec1 = new DstpCryptoSpec(DEFAULT_CRYPTO_CONFIG_FILE);
+        DstpCryptoSpec dstpCryptoSpec1 = new FileDstpCryptoSpec(DEFAULT_CRYPTO_CONFIG_FILE);
         //assertEquals("AES", dstpCryptoSpec1.getAlgorithm());
     }
 

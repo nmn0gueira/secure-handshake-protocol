@@ -12,7 +12,6 @@ import java.util.logging.Logger;
 
 public class ShpCryptoSpec extends AbstractCryptoSpec{
 
-    private static final MessageDigest SHA256;
     private static final Logger LOGGER = Logger.getLogger(ShpCryptoSpec.class.getName());
 
     private static final KeyFactory DIFFIE_HELLMAN_KEY_FACTORY;
@@ -28,13 +27,6 @@ public class ShpCryptoSpec extends AbstractCryptoSpec{
         }
     }
 
-    static {
-        try {
-            SHA256 = MessageDigest.getInstance("SHA-256", "BC");
-        } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     public static final int SALT_SIZE = 8;
     public static final int ITERATION_COUNTER_SIZE = 2;
@@ -98,10 +90,10 @@ public class ShpCryptoSpec extends AbstractCryptoSpec{
      * @return The generated shared key
      * @throws GeneralSecurityException In case of crypto error
      */
-    public byte[] generateSharedKey(byte[] publicKey) throws GeneralSecurityException {
+    public byte[] generateSharedSecret(byte[] publicKey) throws GeneralSecurityException {
         PublicKey publicKeyObj = KeyLoader.loadPublicKey(publicKey, DIFFIE_HELLMAN_KEY_FACTORY);
         keyAgreement.doPhase(publicKeyObj);
-        return digest(keyAgreement.generateSecret());
+        return keyAgreement.generateSecret();
     }
 
     /**
@@ -249,16 +241,6 @@ public class ShpCryptoSpec extends AbstractCryptoSpec{
     }
     public byte[] asymmetricDecrypt(byte[] encryptedData) throws GeneralSecurityException{
         return asymmetricCipher.decrypt(encryptedData, peerKeyPair.getPrivate());
-    }
-
-    /**
-     * Generates a SH256 digest for the provided data.
-     *
-     * @param data Data for which the digest will be generated
-     * @return The generated digest as a byte array
-     */
-    public static byte[] digest(byte[] data) {
-        return SHA256.digest(data);
     }
 
     public static PublicKey loadPublicKeyFromFile(String filePath) throws IOException {

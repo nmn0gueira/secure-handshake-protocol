@@ -1,6 +1,7 @@
 package pt.unl.fct.dstp.crypto;
 
 import pt.unl.fct.common.Utils;
+import pt.unl.fct.common.crypto.HashUtils;
 import pt.unl.fct.common.crypto.IntegrityCheck;
 
 import javax.crypto.Mac;
@@ -42,7 +43,18 @@ public class DstpIntegrityCheck implements IntegrityCheck {
             mac = Mac.getInstance(macAlgorithm);
             setMacMode(macAlgorithm);
             setMacKey(macKey);
+        }
+        else {
+            hash = MessageDigest.getInstance(hashAlgorithm);
+        }
+    }
 
+    public DstpIntegrityCheck(boolean isMac, String hashAlgorithm, String macAlgorithm, byte[] sharedSecret) throws GeneralSecurityException {
+        this.isMac = isMac;
+        if (isMac) {
+            mac = Mac.getInstance(macAlgorithm);
+            setMacMode(macAlgorithm);
+            setMacKey(sharedSecret);
         }
         else {
             hash = MessageDigest.getInstance(hashAlgorithm);
@@ -99,6 +111,26 @@ public class DstpIntegrityCheck implements IntegrityCheck {
             }
             case RC6GMAC, RC6GMACFAST -> {
                 hMacKey =  new SecretKeySpec(Utils.hexStringToByteArray(value), "RC6");
+            }
+            default -> {
+                throw new IllegalStateException("Invalid MAC mode");
+            }
+        }
+    }
+
+    private void setMacKey(byte[] sharedSecret) throws InvalidKeyException {
+        byte[] digest = HashUtils.SHA3_512.digest(sharedSecret);
+        int keySize = getIntegrityProofSize();
+        switch (macMode) {
+            case HMAC -> {
+                hMacKey = new SecretKeySpec(digest, 0, keySize, mac.getAlgorithm());
+                mac.init(hMacKey);
+            }
+            case AESGMAC, AESGMACFAST -> {
+                hMacKey =  new SecretKeySpec(digest, 0, keySize, "AES");
+            }
+            case RC6GMAC, RC6GMACFAST -> {
+                hMacKey =  new SecretKeySpec(digest, 0, keySize, "RC6");
             }
             default -> {
                 throw new IllegalStateException("Invalid MAC mode");

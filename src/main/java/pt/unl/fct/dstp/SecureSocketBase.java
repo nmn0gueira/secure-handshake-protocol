@@ -2,6 +2,8 @@ package pt.unl.fct.dstp;
 
 import pt.unl.fct.common.Utils;
 import pt.unl.fct.dstp.crypto.DstpCryptoSpec;
+import pt.unl.fct.dstp.crypto.FileDstpCryptoSpec;
+import pt.unl.fct.dstp.crypto.SharedDstpCryptoSpec;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.BadPaddingException;
@@ -32,7 +34,14 @@ class SecureSocketBase {
     };
 
     protected SecureSocketBase(String cryptoConfigFile) {
-        cryptoSpec = new DstpCryptoSpec(cryptoConfigFile);
+        cryptoSpec = new FileDstpCryptoSpec(cryptoConfigFile);
+        // Sequence number will be the first 4
+        timestamp = System.currentTimeMillis();
+        receivedSequenceNumbers = new HashSet<>();
+    }
+
+    protected SecureSocketBase(String cryptoConfig, byte[] secret) {
+        cryptoSpec = new SharedDstpCryptoSpec(cryptoConfig, secret);
         // Sequence number will be the first 4
         timestamp = System.currentTimeMillis();
         receivedSequenceNumbers = new HashSet<>();

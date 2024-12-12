@@ -1,6 +1,7 @@
 package pt.unl.fct.dstp.crypto;
 
 import pt.unl.fct.common.Utils;
+import pt.unl.fct.common.crypto.HashUtils;
 import pt.unl.fct.common.crypto.SymmetricCipher;
 
 import javax.crypto.Cipher;
@@ -38,11 +39,54 @@ enum CipherMode {
     }
 }
 
+enum CipherParamSizes {
+    AES("AES", 32, 16),
+    BLOWFISH("BLOWFISH", 56, 8),
+    CHACHA20("ChaCha20", 32, 0),
+    CHACHA20_POLY1305("ChaCha20-Poly1305", 32, 0),
+    DES("DES", 8, 8),
+    TRIPLE_DES("DESede", 24, 8),
+    IDEA("IDEA", 16, 8),
+    RC4("RC4", 56, 0),
+    RC6("RC6", 32, 16);
+
+    private final String name;
+    private final int keySize;
+    private final int ivSize;
+
+    CipherParamSizes(String name, int keySize, int ivSize) {
+        this.name = name;
+        this.keySize = keySize;
+        this.ivSize = ivSize;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getKeySize() {
+        return keySize;
+    }
+
+    public int getIvSize() {
+        return ivSize;
+    }
+
+    public static CipherParamSizes permissiveValueOf(String name) {
+        for (CipherParamSizes value : values()) {
+            if (value.getName().equals(name)) {
+                return value;
+            }
+        }
+        return null;
+    }
+}
+
 public class DstpSymmetricCipher implements SymmetricCipher {
 
     // Configuration
     private final Cipher cipher;
-    private final SecretKey key;
+    private SecretKey key;
     private IvParameterSpec staticIvSpec; // For certain ciphers
     private CipherMode cipherMode;
     private final SecureRandom secureRandom;
@@ -50,12 +94,17 @@ public class DstpSymmetricCipher implements SymmetricCipher {
     public DstpSymmetricCipher(String cipher, String key, String iv, SecureRandom secureRandom) throws NoSuchPaddingException, NoSuchAlgorithmException {
         this.cipher = Cipher.getInstance(cipher);
         setCipherMode(cipher);
-        this.key = new SecretKeySpec(Utils.hexStringToByteArray(key), getAlgorithm());
-        if (iv != null) {
-            staticIvSpec = new IvParameterSpec(Utils.hexStringToByteArray(iv));
-        }
+        setCipherKey(key);
+        setCipherIv(iv);
         this.secureRandom = secureRandom;
+    }
 
+    public DstpSymmetricCipher(String cipher, byte[] sharedSecret, SecureRandom secureRandom) throws NoSuchPaddingException, NoSuchAlgorithmException {
+        this.cipher = Cipher.getInstance(cipher);
+        setCipherMode(cipher);
+        setCipherKey(sharedSecret);
+        setCipherIv(sharedSecret);
+        this.secureRandom = secureRandom;
     }
 
     private void setCipherMode(String value) {
@@ -74,10 +123,60 @@ public class DstpSymmetricCipher implements SymmetricCipher {
         }
     }
 
+    private void setCipherKey(String value) {
+        this.key = new SecretKeySpec(Utils.hexStringToByteArray(value), getAlgorithm());
+    }
+
+    private void setCipherIv(String value) {
+        if (value != null) {
+            staticIvSpec = new IvParameterSpec(Utils.hexStringToByteArray(value));
+        }
+    }
+
+    private void setCipherKey(byte[] sharedSecret) {
+        byte[] digest = HashUtils.SHA3_512.digest(sharedSecret);
+        String algorithm = getAlgorithm();
+        switch (CipherParamSizes.permissiveValueOf(algorithm)) {
+            case CipherParamSizes.AES -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.AES.getKeySize(), algorithm);
+            case CipherParamSizes.BLOWFISH -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.BLOWFISH.getKeySize(), algorithm);
+            case CipherParamSizes.CHACHA20 -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.CHACHA20.getKeySize(), algorithm);
+            case CipherParamSizes.CHACHA20_POLY1305 -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.CHACHA20_POLY1305.getKeySize(), algorithm);
+            case CipherParamSizes.DES -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.DES.getKeySize(), algorithm);
+            case CipherParamSizes.TRIPLE_DES -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.TRIPLE_DES.getKeySize(), algorithm);
+            case CipherParamSizes.IDEA -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.IDEA.getKeySize(), algorithm);
+            case CipherParamSizes.RC4 -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.RC4.getKeySize(), algorithm);
+            case CipherParamSizes.RC6 -> this.key = new SecretKeySpec(digest, 0, CipherParamSizes.RC6.getKeySize(), algorithm);
+            case null -> throw new IllegalStateException("Invalid algorithm");
+        }
+    }
+
+    /**
+     * Set the IV for the cipher. In this version of the method, the IV is generated from the shared secret.
+     * Additionally, the IV is always set unless a stream cipher is used.
+     * @param sharedSecret - shared secret used to generate the IV
+     */
+    private void setCipherIv(byte[] sharedSecret) {
+        byte[] digest = HashUtils.SHA3_256.digest(sharedSecret);
+        if (cipher.getAlgorithm().contains("ECB")) {    // ECB mode does not require an IV
+            staticIvSpec = null;
+            return;
+        }
+        String algorithm = getAlgorithm();
+        switch (CipherParamSizes.permissiveValueOf(algorithm)) {
+            case CipherParamSizes.AES -> staticIvSpec = new IvParameterSpec(digest, 0, CipherParamSizes.AES.getIvSize());
+            case CipherParamSizes.BLOWFISH -> staticIvSpec = new IvParameterSpec(digest, 0, CipherParamSizes.BLOWFISH.getIvSize());
+            case CipherParamSizes.DES -> staticIvSpec = new IvParameterSpec(digest, 0, CipherParamSizes.DES.getIvSize());
+            case CipherParamSizes.TRIPLE_DES -> staticIvSpec = new IvParameterSpec(digest, 0, CipherParamSizes.TRIPLE_DES.getIvSize());
+            case CipherParamSizes.IDEA -> staticIvSpec = new IvParameterSpec(digest, 0, CipherParamSizes.IDEA.getIvSize());
+            case CipherParamSizes.RC6 -> staticIvSpec = new IvParameterSpec(digest, 0, CipherParamSizes.RC6.getIvSize());
+            case CipherParamSizes.CHACHA20, CipherParamSizes.CHACHA20_POLY1305, CipherParamSizes.RC4 -> staticIvSpec = null;
+            case null -> throw new IllegalStateException("Invalid algorithm");
+        }
+    }
+
     private String getAlgorithm() {
         return cipher.getAlgorithm().split("/")[0];
     }
-
 
     @Override
     public byte[] encrypt(byte[] data) throws GeneralSecurityException {
@@ -131,9 +230,7 @@ public class DstpSymmetricCipher implements SymmetricCipher {
                 }
                 return cipher.doFinal(data);
             }
-            default -> {
-                throw new IllegalStateException("Cipher mode not set");
-            }
+            default -> throw new IllegalStateException("Cipher mode not set");
         }
     }
 
@@ -182,9 +279,7 @@ public class DstpSymmetricCipher implements SymmetricCipher {
                 }
                 return cipher.doFinal(encryptedData);
             }
-            default -> {
-                throw new IllegalStateException("Cipher mode not set");
-            }
+            default -> throw new IllegalStateException("Cipher mode not set");
         }
     }
 }

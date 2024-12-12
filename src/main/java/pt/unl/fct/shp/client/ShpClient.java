@@ -1,6 +1,7 @@
 package pt.unl.fct.shp.client;
 
 import pt.unl.fct.common.Utils;
+import pt.unl.fct.common.crypto.HashUtils;
 import pt.unl.fct.shp.crypto.ShpCryptoSpec;
 import pt.unl.fct.shp.AbstractShpPeer;
 
@@ -42,12 +43,12 @@ public class ShpClient extends AbstractShpPeer {
         if (state != State.FINISHED) {
             throw new IllegalStateException("Client did not finish successfully");
         }
-        return new ShpClientOutput(cryptoConfig);
+        return new ShpClientOutput(cryptoConfig, sharedSecret);
     }
 
     private void setInitInput(String userId, String password, String request, int udpPort) {
         this.userId = userId;
-        this.passwordDigest = ShpCryptoSpec.digest(password.getBytes());
+        this.passwordDigest = HashUtils.SHA256.digest(password.getBytes());
         this.request = request;
         this.udpPortBytes = ByteBuffer.allocate(Integer.BYTES).putInt(udpPort).array();
         this.clientCryptoSpec.initIntegrityCheck(passwordDigest);
@@ -218,15 +219,16 @@ public class ShpClient extends AbstractShpPeer {
             byte[] incrementNonce = Utils.getIncrementedBytes(secondNonce);
             byte[] message = Utils.concat(go, incrementNonce);
 
-            byte[] sharedKey = clientCryptoSpec.generateSharedKey(ydhServer);
-            byte[] encryptedMessage = clientCryptoSpec.sharedKeyEncrypt(message, sharedKey);
+            byte[] sharedSecret = clientCryptoSpec.generateSharedSecret(ydhServer);
+            byte[] encryptedMessage = clientCryptoSpec.sharedKeyEncrypt(message, HashUtils.SHA3_256.digest(sharedSecret));
 
             byte[] integrityProof = clientCryptoSpec.createIntegrityProof(encryptedMessage);
 
             byte[] header = getMessageHeader(MsgType.TYPE_5);
 
-            // Create ciphersuite from bytes
+            // Assign output values
             this.cryptoConfig = new String(cryptoConfigBytes, StandardCharsets.UTF_8);
+            this.sharedSecret = sharedSecret;
 
             output.writeObject(createShpMessage(header, encryptedMessage, integrityProof));
 

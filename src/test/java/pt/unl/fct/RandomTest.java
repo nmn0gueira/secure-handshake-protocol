@@ -1,13 +1,15 @@
-package pt.unl.fct.shp;
+package pt.unl.fct;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.Test;
 import pt.unl.fct.common.Utils;
+import pt.unl.fct.common.crypto.HashUtils;
 import pt.unl.fct.common.crypto.KeyLoader;
-import pt.unl.fct.shp.crypto.ShpCryptoSpec;
 import pt.unl.fct.shp.crypto.ShpKeyAgreement;
 
+import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
+import javax.crypto.NoSuchPaddingException;
 import java.security.*;
 import java.security.spec.ECGenParameterSpec;
 
@@ -31,6 +33,15 @@ public class RandomTest {
     }
 
     @Test
+    public void testCipherSize() throws NoSuchPaddingException, NoSuchAlgorithmException {
+        Cipher cipher = Cipher.getInstance("ChaCha20-Poly1305");
+        System.out.println(cipher.getBlockSize());
+        Cipher cipher2 = Cipher.getInstance("DESede/ECB/NoPadding");
+        System.out.println(cipher2.getBlockSize());
+    }
+
+
+    @Test
     public void testECDSAKey() {
         // Generate a key pair
         KeyPair keyPair = ECDSA_KEY_PAIR_GENERATOR.generateKeyPair();
@@ -42,7 +53,7 @@ public class RandomTest {
     public void testPasswordHash() {
         // Test the password hashing
         String password = "password";
-        byte[] passwordHash = ShpCryptoSpec.digest(password.getBytes());
+        byte[] passwordHash = HashUtils.SHA256.digest(password.getBytes());
         System.out.println("Password: " + Utils.byteArrayToHexString(passwordHash));
     }
 
@@ -50,7 +61,7 @@ public class RandomTest {
     public void testPBE() {
         // Test the PBE
         String password = "password";
-        byte[] passwordDigest = ShpCryptoSpec.digest(password.getBytes());
+        byte[] passwordDigest = HashUtils.SHA256.digest(password.getBytes());
         System.out.println("Password hash :" + Utils.byteArrayToHexString(passwordDigest));
         System.out.println("--");
         String digestString = new String(passwordDigest);

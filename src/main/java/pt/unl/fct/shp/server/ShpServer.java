@@ -1,6 +1,7 @@
 package pt.unl.fct.shp.server;
 
 import pt.unl.fct.common.Utils;
+import pt.unl.fct.common.crypto.HashUtils;
 import pt.unl.fct.shp.AbstractShpPeer;
 import pt.unl.fct.shp.crypto.ShpCryptoSpec;
 
@@ -47,7 +48,7 @@ public class ShpServer extends AbstractShpPeer {
         if (state != State.FINISHED) {
             throw new IllegalStateException("Protocol did not finish successfully.");
         }
-        return new ShpServerOutput(userRequest, udpPort);
+        return new ShpServerOutput(userRequest, udpPort, new String(cryptoConfigBytes), sharedSecret);
     }
 
     private void setInitInput(Set<String> validRequests) {
@@ -216,8 +217,8 @@ public class ShpServer extends AbstractShpPeer {
             }
 
             // Initialize the shared key cipher
-            byte[] sharedKey = serverCryptoSpec.generateSharedKey(ydhClient);
-            serverCryptoSpec.initSharedKeyCipher(sharedKey);
+            byte[] sharedSecret = serverCryptoSpec.generateSharedSecret(ydhClient);
+            serverCryptoSpec.initSharedKeyCipher(HashUtils.SHA3_256.digest(sharedSecret));
 
             byte[] confirmation = ShpCryptoSpec.REQUEST_CONFIRMATION.getBytes();
             byte[] incrementedClientNonce = Utils.getIncrementedBytes(clientNonce);
@@ -242,9 +243,10 @@ public class ShpServer extends AbstractShpPeer {
 
             byte[] header = getMessageHeader(MsgType.TYPE_4);
 
+            // Assign output values
             this.userRequest = new String(requestBytes);
-            // Extract the UDP port from the received bytes
             this.udpPort = ((udpPortBytes[0] & 0xFF) << 24) | ((udpPortBytes[1] & 0xFF) << 16) | ((udpPortBytes[2] & 0xFF) << 8) | (udpPortBytes[3] & 0xFF);
+            this.sharedSecret = sharedSecret;
 
             output.writeObject(createShpMessage(header, publicKeyEncryptedData, ydhServer, digitalSignature, integrityProof));
             LOGGER.info("Sent TYPE_4 response.");
