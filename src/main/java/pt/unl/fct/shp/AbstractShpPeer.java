@@ -51,7 +51,6 @@ public abstract class AbstractShpPeer {
     protected AbstractShpPeer() {
         noncesReceived = new HashSet<>();
         objectQueue = new LinkedBlockingQueue<>();
-        loadResources();
     }
 
     /**
@@ -162,8 +161,6 @@ public abstract class AbstractShpPeer {
             input.close();
         }
     }
-
-    protected abstract void loadResources();
 
     protected ShpMessage createShpMessage(byte[] header, byte[]... components) {
         return new ShpMessage(header, components);

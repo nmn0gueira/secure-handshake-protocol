@@ -28,6 +28,7 @@ public class ShpCryptoSpec extends AbstractCryptoSpec{
     }
 
 
+    public static final int USER_ID_MAX_SIZE = 320;
     public static final int SALT_SIZE = 8;
     public static final int ITERATION_COUNTER_SIZE = 2;
     public static final int NONCE_SIZE = 16;
@@ -72,7 +73,7 @@ public class ShpCryptoSpec extends AbstractCryptoSpec{
     }
 
     public void initSharedKeyCipher(byte[] sharedKey) {
-        this.sharedKeyCipher = new ShpSharedKeyCipher(sharedKey, Utils.getFirstBytes(sharedKey, 16));
+        this.sharedKeyCipher = new ShpSharedKeyCipher(sharedKey, Utils.fitToSize(sharedKey, 16));
     }
 
     public void initIntegrityCheck(byte[] key)  {

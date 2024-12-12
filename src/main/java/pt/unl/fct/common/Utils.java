@@ -152,8 +152,8 @@ public class Utils
 
     /**
      * Transform a number of x bytes into y bytes (ex: 2 bytes into 4 bytes or 4 bytes into 2 bytes)
-     * If the number of bytes is smaller than y, the result will be padded with 0s
-     * If the number of bytes is bigger than y, the result will be the last y bytes of the original number
+     * If the array size is smaller than x, the result will be the original array padded with 0s
+     * If the array size is bigger than x, the result will be truncated to the first x bytes of the original array
      * @param data
      * @param x
      * @return
@@ -161,22 +161,15 @@ public class Utils
     public static byte[] fitToSize(byte[] data, int x) {
         if (x > data.length) {
             byte[] result = new byte[x];
-            System.arraycopy(data, 0, result, x - data.length, data.length);
+            System.arraycopy(data, 0, result, 0, data.length);
             return result;
         }
         else if (data.length == x) {
             return data;
         }
         else {
-            return subArray(data, data.length - x, data.length);
+            return subArray(data, 0, x);
         }
-    }
-
-    public static byte[] getFirstBytes(byte[] data, int x) {
-        if (x > data.length) {
-            throw new IllegalArgumentException("The number of bytes requested is bigger than the size of the array");
-        }
-        return subArray(data, 0, x);
     }
 
     public static byte[] getIncrementedBytes(byte[] bytes) {

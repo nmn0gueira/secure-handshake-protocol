@@ -35,6 +35,7 @@ public class ShpClient extends AbstractShpPeer {
 
 
     public ShpClient() {
+        loadClientResources();
     }
 
     public ShpClientOutput shpClient(String serverAddress, int tcpPort, String userId, String password, String request, int udpPort) {
@@ -47,6 +48,9 @@ public class ShpClient extends AbstractShpPeer {
     }
 
     private void setInitInput(String userId, String password, String request, int udpPort) {
+        if (userId.getBytes().length > ShpCryptoSpec.USER_ID_MAX_SIZE) {
+            throw new IllegalArgumentException("User ID too long");
+        }
         this.userId = userId;
         this.passwordDigest = HashUtils.SHA256.digest(password.getBytes());
         this.request = request;
@@ -62,6 +66,7 @@ public class ShpClient extends AbstractShpPeer {
         } finally {
             closeConnection();
             clientCryptoSpec.reset();   // Reset the crypto spec to avoid reusing the same init parameters
+            noncesReceived.clone();     // Clear the set of received nonces
         }
     }
 
@@ -118,7 +123,7 @@ public class ShpClient extends AbstractShpPeer {
         byte[] header = getMessageHeader(MsgType.TYPE_3);
 
         // Nonce 1 and 2 that will be used for PBE and nonce 3 that will be used for the next message nonce
-        byte[] salt = Utils.getFirstBytes(payload.get(0), ShpCryptoSpec.SALT_SIZE);
+        byte[] salt = Utils.fitToSize(payload.get(0), ShpCryptoSpec.SALT_SIZE);
         byte[] iterationBytes = payload.get(1);
         byte[] serverNonce = payload.get(2);
 
@@ -244,8 +249,7 @@ public class ShpClient extends AbstractShpPeer {
         return socket.isClosed();
     }
 
-    @Override
-    protected void loadResources() {
+    protected void loadClientResources() {
         try {
             this.serverPublicKey = ShpCryptoSpec.loadPublicKeyFromFile(SERVER_ECC_PUBLIC_KEY_PATH);
             this.clientCryptoSpec = new ShpCryptoSpec(CLIENT_ECC_KEYPAIR_PATH);

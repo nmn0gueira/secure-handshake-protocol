@@ -20,7 +20,6 @@ public class ShpServer extends AbstractShpPeer {
 
     // Server resources
     private static final String SERVER_ECC_KEYPAIR_PATH = "server/ServerECCKeyPair.sec";
-    private static final String SERVER_CRYPTO_CONFIG_PATH = "server/ciphersuite.conf";
     private Map<String, User> userDatabase;
     private byte[] cryptoConfigBytes;
     private ShpCryptoSpec serverCryptoSpec;
@@ -39,7 +38,8 @@ public class ShpServer extends AbstractShpPeer {
     private byte[] sharedSecret;
 
 
-    public ShpServer() {
+    public ShpServer(String serverCryptoConfigPath) {
+        loadServerResources(serverCryptoConfigPath);
     }
 
     public ShpServerOutput shpServer(int tcpPort, Set<String> validRequests) {
@@ -63,6 +63,7 @@ public class ShpServer extends AbstractShpPeer {
         } finally {
             closeConnection();
             serverCryptoSpec.reset();   // Reset the crypto spec to avoid reusing the same init parameters
+            noncesReceived.clone();     // Clear the set of received nonces
         }
     }
 
@@ -134,7 +135,7 @@ public class ShpServer extends AbstractShpPeer {
         serverCryptoSpec.initIntegrityCheck(currentUser.passwordHash());
         serverCryptoSpec.initPbeCipher(
                 new String(currentUser.passwordHash()),
-                Utils.getFirstBytes(salt, ShpCryptoSpec.SALT_SIZE),
+                Utils.fitToSize(salt, ShpCryptoSpec.SALT_SIZE),
                 ((iterationBytes[0] & 0xFF) << 8) | (iterationBytes[1] & 0xFF));
 
         byte[] header = getMessageHeader(MsgType.TYPE_2);
@@ -151,7 +152,6 @@ public class ShpServer extends AbstractShpPeer {
 
     private State handleType3Message(List<byte[]> payload) {
         LOGGER.info("Received message type 3.");
-
 
         byte[] passwordEncryptedData = payload.get(0);
         byte[] ydhClient = payload.get(1);
@@ -301,11 +301,10 @@ public class ShpServer extends AbstractShpPeer {
         return clientSocket == null || clientSocket.isClosed();
     }
 
-    @Override
-    protected void loadResources() {
+    protected void loadServerResources(String serverCryptoConfigPath) {
         try {
             loadUserDatabase();
-            loadCryptoConfig();
+            loadCryptoConfig(serverCryptoConfigPath);
             this.serverCryptoSpec = new ShpCryptoSpec(SERVER_ECC_KEYPAIR_PATH);
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to load server resources.", e);
@@ -329,11 +328,21 @@ public class ShpServer extends AbstractShpPeer {
         }
     }
 
-    private void loadCryptoConfig() throws IOException {
+    private void loadCryptoConfig(String serverCryptoConfigPath) throws IOException {
+        // Try to first load the file from the resources
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream(SERVER_CRYPTO_CONFIG_PATH);
-        assert inputStream != null;
-        cryptoConfigBytes = inputStream.readAllBytes();
+        try (InputStream inputStream = classLoader.getResourceAsStream(serverCryptoConfigPath)) {
+            if (inputStream != null) {
+                cryptoConfigBytes = inputStream.readAllBytes();
+                return;
+            }
+        }
+        // If the file is not found in the resources, try to load it from the file system
+        try (InputStream inputStream = new FileInputStream(serverCryptoConfigPath)) {
+            cryptoConfigBytes = inputStream.readAllBytes();
+            if (cryptoConfigBytes.length == 0) {
+                throw new FileNotFoundException("Crypto config file not found.");
+            }
+        }
     }
-
 }
