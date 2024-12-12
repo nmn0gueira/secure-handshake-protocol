@@ -42,8 +42,6 @@ public class ShpTest {
         System.out.println("Crypto config received:\n" + cOutput.cryptoConfig());
         System.out.println("Shared key received:\n" + Utils.byteArrayToHexString(cOutput.sharedSecret()));
         System.out.println("Client thread finished");
-        System.out.println("Sleeping for 5 seconds to allow server to finish");
-        Thread.sleep(5000);
     }
 
     @Test

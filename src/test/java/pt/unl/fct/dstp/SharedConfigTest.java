@@ -9,9 +9,7 @@ import pt.unl.fct.common.Utils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
@@ -28,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
  * A test class for the SecureDatagramSocket class (since SecureMulticastSocket and SecureDataSocket share the same functionality apart
  * from unchanged underlying methods, we only test SecureDatagramSocket)
  */
-public class DiscardThisTest {
+public class SharedConfigTest {
     private SecureDatagramSocket serverSocket;
     private SecureDatagramSocket clientSocket;
     private static final long TIMEOUT_MS = 3000;
@@ -220,11 +218,11 @@ public class DiscardThisTest {
 
     static Stream<String> configFilesProvider() throws IOException, URISyntaxException {
         // Directory where your config files are stored
-        Path configDir = Paths.get(Objects.requireNonNull(SecureDatagramSocketTest.class.getClassLoader().getResource("test-configs/shared")).toURI());
+        Path configDir = Paths.get(Objects.requireNonNull(FixedConfigTest.class.getClassLoader().getResource("test-configs/shared")).toURI());
         // Get file contents as a stream of strings
         return Files.list(configDir)
                 .filter(path -> path.toString().endsWith(".txt"))
-                .map(DiscardThisTest::readFile);
+                .map(SharedConfigTest::readFile);
     }
 
     private static String readFile(Path path) {

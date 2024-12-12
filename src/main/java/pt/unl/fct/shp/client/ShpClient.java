@@ -44,6 +44,11 @@ public class ShpClient extends AbstractShpPeer {
         if (state != State.FINISHED) {
             throw new IllegalStateException("Client did not finish successfully");
         }
+        try { // TODO: This is a workaround to allow the server to finish before the client
+            Thread.sleep(2500);
+        } catch (InterruptedException e) {
+            LOGGER.log(Level.WARNING, "Client thread interrupted.", e);
+        }
         return new ShpClientOutput(cryptoConfig, sharedSecret);
     }
 

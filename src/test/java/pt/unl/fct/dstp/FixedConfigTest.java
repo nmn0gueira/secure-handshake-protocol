@@ -65,7 +65,7 @@ class TestSecureDatagramSocket extends SecureDatagramSocket {
  * A test class for the SecureDatagramSocket class (since SecureMulticastSocket and SecureDataSocket share the same functionality apart
  * from unchanged underlying methods, we only test SecureDatagramSocket)
  */
-public class SecureDatagramSocketTest {
+public class FixedConfigTest {
     private SecureDatagramSocket serverSocket;
     private SecureDatagramSocket clientSocket;
     private static final long TIMEOUT_MS = 3000;
@@ -257,7 +257,7 @@ public class SecureDatagramSocketTest {
 
     static Stream<String> configFilesProvider() throws IOException, URISyntaxException {
         // Directory where your config files are stored
-        Path configDir = Paths.get(Objects.requireNonNull(SecureDatagramSocketTest.class.getClassLoader().getResource("test-configs/fixed")).toURI());
+        Path configDir = Paths.get(Objects.requireNonNull(FixedConfigTest.class.getClassLoader().getResource("test-configs/fixed")).toURI());
         return Files.walk(configDir)
                 .filter(Files::isRegularFile)
                 .map(Path::toString);

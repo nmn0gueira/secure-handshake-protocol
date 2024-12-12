@@ -93,6 +93,9 @@ public class ShpServer extends AbstractShpPeer {
             if (serverSocket != null) {
                 serverSocket.close();
             }
+            if (clientSocket != null) {
+                clientSocket.close();
+            }
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to close server connection resources.", e);
         }
@@ -206,7 +209,7 @@ public class ShpServer extends AbstractShpPeer {
                 return State.ERROR;
             }
 
-            if (!validRequests.contains(new String(requestBytes))) {
+            if (validRequests != null && !validRequests.contains(new String(requestBytes))) {
                 LOGGER.severe("Invalid request.");
                 return State.ERROR;
             }
