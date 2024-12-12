@@ -1,7 +1,6 @@
 package pt.unl.fct.shp;
 
 import java.io.*;
-import java.security.Security;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -51,6 +50,7 @@ public abstract class AbstractShpPeer {
     protected AbstractShpPeer() {
         noncesReceived = new HashSet<>();
         objectQueue = new LinkedBlockingQueue<>();
+        LOGGER.setLevel(Level.OFF);
     }
 
     /**

@@ -11,6 +11,7 @@ import java.net.DatagramPacket;
 import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 class SecureSocketBase {
@@ -38,6 +39,7 @@ class SecureSocketBase {
         // Sequence number will be the first 4
         timestamp = System.currentTimeMillis();
         receivedSequenceNumbers = new HashSet<>();
+        LOGGER.setLevel(Level.OFF);
     }
 
     protected SecureSocketBase(String cryptoConfig, byte[] secret) {
@@ -45,6 +47,7 @@ class SecureSocketBase {
         // Sequence number will be the first 4
         timestamp = System.currentTimeMillis();
         receivedSequenceNumbers = new HashSet<>();
+        LOGGER.setLevel(Level.OFF);
     }
 
     /**
