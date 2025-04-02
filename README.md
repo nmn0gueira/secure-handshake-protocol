@@ -1,4 +1,4 @@
-# Secure Handshake Protocol
+# Secure Handshake Protocol for Datagram-Based Secure Transport
 
 This repository contains an implementation of a secure handshake protocol designed to establish a secure connection between two parties. This protocol works with secure datagram sockets from the dstp package. After completing the handshake, it enables secure message exchange using the datagram-based secure transport protocol. Inspired by TLS, this protocol aims to ensure confidentiality, integrity, and authentication in communications.
 
