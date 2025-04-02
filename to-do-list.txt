@@ -1,0 +1,20 @@
+- Usar as cenas encriptadas nas digital signatures logo para fazer verificaçoes mais rapidas 
+
+- Fazer nonces realmente unicos across e verificar nonces incrementados 
+
+- Fazer com que a mensagem 5 seja configurada já com o crypto config 
+
+- Crypto config deve ainda incluir sizes 
+
+- Diffie hellman com numeros de 2048 bits 
+
+- Chaves publicas e privadas guardadas com o mesmo tamanho (?)
+
+- Loggers desativados mais bonitinho 
+
+- Fazer verificaçao do mac logo no dstp 
+
+Extra:
+- Ver como mpc4j faz load de resources e fazer cenas tipo chaves ficarem numa keystore, ver como guardar melhor cenas na base de dados 
+
+- Incorporate TLS sockets. These would authenticate at the system level while the protocol itself authenticates at the user level.
