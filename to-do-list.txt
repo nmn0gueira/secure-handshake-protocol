@@ -12,6 +12,8 @@
 
 - Loggers desativados mais bonitinho 
 
+- Fazer com que chaves e cenas do genero nao sejam guardadas como recurso do projeto sendo que isso dependeria de user para user
+
 - Fazer verificaçao do mac logo no dstp 
 
 Extra:
