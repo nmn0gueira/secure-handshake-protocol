@@ -16,6 +16,10 @@
 
 - Fazer verificaçao do mac logo no dstp 
 
+- Corrigir a maneira como é usado o PBE Cipher. A maneira como está a ser usada não me parece fazer sentido. Do lado do servidor isso implicaria ou inicializar o cipher a partir de coisas existentes na base de dados ou manter a chave lá dentro em plaintext. Ambas as opções parecem ser igualmente inseguras.
+
+- É possível que esteja a fazer over engineer dos ciphers e what not. Deve ser desnecessário (pelo menos em algum tamanho) ter as interfaces e classes a implementar as interfaces da java.security package.
+
 Extra:
 - Ver como mpc4j faz load de resources e fazer cenas tipo chaves ficarem numa keystore, ver como guardar melhor cenas na base de dados 
 
